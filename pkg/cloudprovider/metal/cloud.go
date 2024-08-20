@@ -144,7 +144,7 @@ func (o *cloud) Clusters() (cloudprovider.Clusters, bool) {
 
 // Routes returns an implementation of Routes for metal
 func (o *cloud) Routes() (cloudprovider.Routes, bool) {
-	return nil, true
+	return nil, false
 }
 
 // ProviderName returns the cloud provider ID

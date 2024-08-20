@@ -1,0 +1,5 @@
+namePrefix: cloud-controller-
+
+resources:
+  - ../rbac
+  - ../manager

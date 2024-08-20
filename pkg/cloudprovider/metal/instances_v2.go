@@ -80,6 +80,7 @@ func (o *metalInstancesV2) InstanceMetadata(ctx context.Context, node *corev1.No
 	if node == nil {
 		return nil, nil
 	}
+
 	serverClaim := &metalv1alpha1.ServerClaim{}
 	if err := o.metalClient.Get(ctx, client.ObjectKey{Namespace: o.metalNamespace, Name: node.Name}, serverClaim); err != nil {
 		if apierrors.IsNotFound(err) {
