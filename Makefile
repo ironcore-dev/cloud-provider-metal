@@ -67,19 +67,19 @@ check: add-license lint test
 ##@ Build
 
 .PHONY: build
-build: fmt vet ## Build machine controller binary.
-	go build -o bin/machine-controller ./cmd/machine-controller/main.go
+build: fmt vet ## Build metal cloud controller binary.
+	go build -o bin/metal-cloud-controller ./cmd/metal-cloud-controller-manager/main.go
 
 .PHONY: run
-run: fmt vet ## Run a machine controller from your host.
-	go run ./cmd/machine-controller/main.go
+run: fmt vet ## Run a metal cloud controller from your host.
+	go run ./cmd/metal-cloud-controller-manager/main.go
 
 .PHONY: docker-build
-docker-build: test ## Build docker image with the machine controller.
+docker-build: test ## Build docker image with the metal cloud controller.
 	docker build -t ${CONTROLLER_IMG} .
 
 .PHONY: docker-push
-docker-push: ## Push docker image with the machine controller.
+docker-push: ## Push docker image with the metal cloud controller.
 	docker push ${CONTROLLER_IMG}
 
 .PHONY: generate
