@@ -116,7 +116,7 @@ func (o *cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, 
 }
 
 func (o *cloud) LoadBalancer() (cloudprovider.LoadBalancer, bool) {
-	return nil, true
+	return nil, false
 }
 
 // Instances returns an implementation of Instances for metal

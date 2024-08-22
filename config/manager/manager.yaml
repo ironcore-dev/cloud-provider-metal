@@ -21,7 +21,6 @@ spec:
         role: manager
     spec:
       automountServiceAccountToken: true
-      hostNetwork: true
       containers:
         - name: manager
           image: controller:latest
