@@ -2,7 +2,7 @@
 CONTROLLER_IMG ?= controller:latest
 
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.29.0
+ENVTEST_K8S_VERSION = 1.30.0
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -82,9 +82,6 @@ docker-build: test ## Build docker image with the metal cloud controller.
 docker-push: ## Push docker image with the metal cloud controller.
 	docker push ${CONTROLLER_IMG}
 
-.PHONY: generate
-generate: docs ## Generate project artefacts.
-
 .PHONY: clean-local-bin
 clean-local-bin:
 	rm -rf $(LOCALBIN)/*
@@ -110,7 +107,7 @@ GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 
 ## Tool Versions
 ADDLICENSE_VERSION ?= v1.1.1
-GOIMPORTS_VERSION ?= v0.22.0
+GOIMPORTS_VERSION ?= v0.24.0
 GOLANGCI_LINT_VERSION ?= v1.60.1
 
 .PHONY: envtest
