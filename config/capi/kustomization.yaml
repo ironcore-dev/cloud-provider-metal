@@ -1,0 +1,5 @@
+resources:
+- ../default
+
+patches:
+- path: deployment_patch.yaml
