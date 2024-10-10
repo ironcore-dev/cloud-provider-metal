@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/types"
+
 	metalv1alpha1 "github.com/ironcore-dev/metal-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -120,7 +122,7 @@ func (o *metalInstancesV2) InstanceMetadata(ctx context.Context, node *corev1.No
 
 	providerID := node.Spec.ProviderID
 	if providerID == "" {
-		providerID = fmt.Sprintf("%s://%s/%s", ProviderName, o.metalNamespace, serverClaim.Name)
+		providerID = getProviderIDForServerClaim(serverClaim)
 	}
 
 	// TODO: use constants here
@@ -146,6 +148,10 @@ func (o *metalInstancesV2) InstanceMetadata(ctx context.Context, node *corev1.No
 		Zone:          zone,
 		Region:        region,
 	}, nil
+}
+
+func getProviderIDForServerClaim(serverClaim *metalv1alpha1.ServerClaim) string {
+	return fmt.Sprintf("%s://%s/%s/%s", ProviderName, serverClaim.Namespace, serverClaim.Name, serverClaim.UID)
 }
 
 func (o *metalInstancesV2) getServerClaimForNode(ctx context.Context, node *corev1.Node) (*metalv1alpha1.ServerClaim, error) {
@@ -174,7 +180,7 @@ func (o *metalInstancesV2) getServerClaimForNode(ctx context.Context, node *core
 }
 
 func (o *metalInstancesV2) getServerClaimFromProviderID(ctx context.Context, providerID string) (*metalv1alpha1.ServerClaim, error) {
-	objKey, err := getObjectKeyFromProviderID(providerID)
+	objKey, objUID, err := getObjectKeyFromProviderID(providerID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get object key for ProviderID %s: %w", providerID, err)
 	}
@@ -185,16 +191,22 @@ func (o *metalInstancesV2) getServerClaimFromProviderID(ctx context.Context, pro
 		}
 		return nil, fmt.Errorf("failed to get server claim object for ProviderID %s: %w", providerID, err)
 	}
+
+	// Check for UID equality. For backwards compatibility we only compare if the UID is part of the ProviderID.
+	if len(objUID) > 0 && serverClaim.UID != objUID {
+		return nil, cloudprovider.InstanceNotFound
+	}
+
 	return serverClaim, nil
 }
 
-func getObjectKeyFromProviderID(providerID string) (client.ObjectKey, error) {
+func getObjectKeyFromProviderID(providerID string) (client.ObjectKey, types.UID, error) {
 	parts := strings.Split(strings.TrimPrefix(providerID, fmt.Sprintf("%s://", ProviderName)), "/")
-	if len(parts) != 2 {
-		return client.ObjectKey{}, fmt.Errorf("invalid format of ProviderID %s", providerID)
+	if len(parts) != 3 {
+		return client.ObjectKey{}, "", fmt.Errorf("invalid format of ProviderID %s", providerID)
 	}
 	return client.ObjectKey{
 		Namespace: parts[0],
 		Name:      parts[1],
-	}, nil
+	}, types.UID(parts[2]), nil
 }
