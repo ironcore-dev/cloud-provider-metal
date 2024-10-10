@@ -110,7 +110,7 @@ func (o *metalInstancesV2) InstanceMetadata(ctx context.Context, node *corev1.No
 	}
 
 	// collect internal Node IPs
-	var addresses []corev1.NodeAddress
+	addresses := make([]corev1.NodeAddress, 0, len(server.Status.NetworkInterfaces))
 	for _, iface := range server.Status.NetworkInterfaces {
 		addresses = append(addresses, corev1.NodeAddress{
 			Type:    corev1.NodeInternalIP,
