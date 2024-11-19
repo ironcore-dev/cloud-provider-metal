@@ -3,7 +3,7 @@ module github.com/ironcore-dev/cloud-provider-metal
 go 1.23.0
 
 require (
-	github.com/ironcore-dev/controller-utils v0.9.4
+	github.com/ironcore-dev/controller-utils v0.9.5
 	github.com/ironcore-dev/metal-operator v0.0.0-20241009145147-7ccca8caf3b1
 	github.com/onsi/ginkgo/v2 v2.21.0
 	github.com/onsi/gomega v1.35.1
