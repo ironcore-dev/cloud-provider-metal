@@ -17,6 +17,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
+	capiv1beta1 "sigs.k8s.io/cluster-api/exp/ipam/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
@@ -32,6 +33,7 @@ var metalScheme = runtime.NewScheme()
 func init() {
 	utilruntime.Must(metalv1alpha1.AddToScheme(metalScheme))
 	utilruntime.Must(ipamv1alpha1.AddToScheme(metalScheme))
+	utilruntime.Must(capiv1beta1.AddToScheme(metalScheme))
 
 	cloudprovider.RegisterCloudProvider(ProviderName, func(config io.Reader) (cloudprovider.Interface, error) {
 		cfg, err := LoadCloudProviderConfig(config)

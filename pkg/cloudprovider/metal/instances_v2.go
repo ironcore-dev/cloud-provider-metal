@@ -15,6 +15,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
+	capiv1beta1 "sigs.k8s.io/cluster-api/exp/ipam/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -170,6 +171,16 @@ func (o *metalInstancesV2) getNodeAddresses(ctx context.Context, server *metalv1
 		addresses = append(addresses, corev1.NodeAddress{
 			Type:    corev1.NodeInternalIP,
 			Address: ip.Status.Reserved.String(),
+		})
+		return addresses, nil
+	} else if ipamKind.APIGroup == capiv1beta1.GroupVersion.Group && ipamKind.Kind == "IPAddress" {
+		var ip capiv1beta1.IPAddress
+		if err := o.metalClient.Get(ctx, client.ObjectKeyFromObject(claim), &ip); err != nil {
+			return nil, err
+		}
+		addresses = append(addresses, corev1.NodeAddress{
+			Type:    corev1.NodeInternalIP,
+			Address: ip.Spec.Address,
 		})
 		return addresses, nil
 	}
