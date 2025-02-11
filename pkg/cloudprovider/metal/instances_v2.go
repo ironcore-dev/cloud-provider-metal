@@ -25,8 +25,6 @@ type metalInstancesV2 struct {
 	cloudConfig    CloudConfig
 }
 
-const LabelInstanceType = "instance-type"
-
 func newMetalInstancesV2(targetClient client.Client, metalClient client.Client, namespace string, cloudConfig CloudConfig) cloudprovider.InstancesV2 {
 	return &metalInstancesV2{
 		targetClient:   targetClient,
@@ -118,7 +116,7 @@ func (o *metalInstancesV2) InstanceMetadata(ctx context.Context, node *corev1.No
 		providerID = fmt.Sprintf("%s://%s/%s", ProviderName, o.metalNamespace, serverClaim.Name)
 	}
 
-	instanceType, ok := server.Labels[LabelInstanceType]
+	instanceType, ok := server.Labels[metalv1alpha1.InstanceTypeAnnotation]
 	if !ok {
 		klog.V(2).InfoS("No instance type label found for node instance", "Node", node.Name)
 	}
