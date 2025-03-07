@@ -166,7 +166,7 @@ func (o *metalInstancesV2) getNodeAddresses(ctx context.Context, server *metalv1
 		if err := o.metalClient.Get(ctx, client.ObjectKeyFromObject(claim), &ip); err != nil {
 			return nil, err
 		}
-		if ip.Status.State != ipamv1alpha1.CFinishedIPState || ip.Status.Reserved == nil {
+		if ip.Status.State != ipamv1alpha1.FinishedIPState || ip.Status.Reserved == nil {
 			return addresses, errors.New("ip is not allocated")
 		}
 		addresses = append(addresses, corev1.NodeAddress{

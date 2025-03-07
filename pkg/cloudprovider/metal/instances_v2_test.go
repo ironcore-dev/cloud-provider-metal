@@ -432,7 +432,7 @@ var _ = Describe("InstancesV2 with ironcore ipam", func() {
 		Expect(k8sClient.Create(ctx, ip)).To(Succeed())
 		DeferCleanup(k8sClient.Delete, ip)
 		ip.Status = ipamv1alpha1.IPStatus{
-			State: ipamv1alpha1.CFinishedIPState,
+			State: ipamv1alpha1.FinishedIPState,
 			Reserved: &ipamv1alpha1.IPAddr{
 				Net: netip.AddrFrom4([4]byte{100, 10, 17, 18}),
 			},
