@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/ironcore-dev/controller-utils/modutils"
-	ipamv1alpha1 "github.com/ironcore-dev/ipam/api/ipam/v1alpha1"
 	metalv1alpha1 "github.com/ironcore-dev/metal-operator/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -64,7 +63,6 @@ var _ = BeforeSuite(func() {
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			modutils.Dir("github.com/ironcore-dev/metal-operator", "config", "crd", "bases"),
-			modutils.Dir("github.com/ironcore-dev/ipam", "config", "crd", "bases"),
 		},
 		ErrorIfCRDPathMissing: true,
 
@@ -85,7 +83,6 @@ var _ = BeforeSuite(func() {
 
 	DeferCleanup(testEnv.Stop)
 
-	Expect(ipamv1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
 	Expect(metalv1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
 	Expect(capiv1beta1.AddToScheme(scheme.Scheme)).To(Succeed())
 

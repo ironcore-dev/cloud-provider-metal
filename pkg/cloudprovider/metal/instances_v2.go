@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"strings"
 
-	ipamv1alpha1 "github.com/ironcore-dev/ipam/api/ipam/v1alpha1"
 	metalv1alpha1 "github.com/ironcore-dev/metal-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -161,20 +160,7 @@ func (o *metalInstancesV2) getNodeAddresses(ctx context.Context, server *metalv1
 		return addresses, nil
 	}
 	ipamKind := o.cloudConfig.Networking.IPAMKind
-	if ipamKind.APIGroup == ipamv1alpha1.SchemeGroupVersion.Group && ipamKind.Kind == "IP" {
-		var ip ipamv1alpha1.IP
-		if err := o.metalClient.Get(ctx, client.ObjectKeyFromObject(claim), &ip); err != nil {
-			return nil, err
-		}
-		if ip.Status.State != ipamv1alpha1.FinishedIPState || ip.Status.Reserved == nil {
-			return addresses, errors.New("ip is not allocated")
-		}
-		addresses = append(addresses, corev1.NodeAddress{
-			Type:    corev1.NodeInternalIP,
-			Address: ip.Status.Reserved.String(),
-		})
-		return addresses, nil
-	} else if ipamKind.APIGroup == capiv1beta1.GroupVersion.Group && ipamKind.Kind == "IPAddress" {
+	if ipamKind.APIGroup == capiv1beta1.GroupVersion.Group && ipamKind.Kind == "IPAddress" {
 		var ip capiv1beta1.IPAddress
 		if err := o.metalClient.Get(ctx, client.ObjectKeyFromObject(claim), &ip); err != nil {
 			return nil, err

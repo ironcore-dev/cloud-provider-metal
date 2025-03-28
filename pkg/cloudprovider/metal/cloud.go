@@ -9,7 +9,6 @@ import (
 	"io"
 	"log"
 
-	ipamv1alpha1 "github.com/ironcore-dev/ipam/api/ipam/v1alpha1"
 	metalv1alpha1 "github.com/ironcore-dev/metal-operator/api/v1alpha1"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
@@ -32,7 +31,6 @@ var metalScheme = runtime.NewScheme()
 
 func init() {
 	utilruntime.Must(metalv1alpha1.AddToScheme(metalScheme))
-	utilruntime.Must(ipamv1alpha1.AddToScheme(metalScheme))
 	utilruntime.Must(capiv1beta1.AddToScheme(metalScheme))
 
 	cloudprovider.RegisterCloudProvider(ProviderName, func(config io.Reader) (cloudprovider.Interface, error) {
