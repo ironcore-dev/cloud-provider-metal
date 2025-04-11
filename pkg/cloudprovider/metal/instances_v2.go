@@ -165,14 +165,24 @@ func (o *metalInstancesV2) getNodeAddresses(ctx context.Context, server *metalv1
 	}
 	ipamKind := o.cloudConfig.Networking.IPAMKind
 	if ipamKind.APIGroup == capiv1beta1.GroupVersion.Group && ipamKind.Kind == "IPAddress" {
-		var ip capiv1beta1.IPAddress
-		if err := o.metalClient.Get(ctx, client.ObjectKeyFromObject(claim), &ip); err != nil {
+		selector := client.MatchingLabels{LabelKeyServerClaim: claim.Namespace + "/" + claim.Name}
+		var allIpClaims capiv1beta1.IPAddressClaimList
+		if err := o.metalClient.List(ctx, &allIpClaims, client.InNamespace(o.metalNamespace), selector); err != nil {
 			return nil, err
 		}
-		addresses = append(addresses, corev1.NodeAddress{
-			Type:    corev1.NodeInternalIP,
-			Address: ip.Spec.Address,
-		})
+		for _, ipClaim := range allIpClaims.Items {
+			if ipClaim.Status.AddressRef.Name == "" {
+				continue
+			}
+			var ipAddr capiv1beta1.IPAddress
+			if err := o.metalClient.Get(ctx, client.ObjectKey{Name: ipClaim.Status.AddressRef.Name, Namespace: ipClaim.Namespace}, &ipAddr); err != nil {
+				return nil, fmt.Errorf("failed to get ip address object for node %s: %w", claim.Name, err)
+			}
+			addresses = append(addresses, corev1.NodeAddress{
+				Type:    corev1.NodeInternalIP,
+				Address: ipAddr.Spec.Address,
+			})
+		}
 		return addresses, nil
 	}
 	return nil, errors.New("unknown ipamKind used for node ip address assignment")
