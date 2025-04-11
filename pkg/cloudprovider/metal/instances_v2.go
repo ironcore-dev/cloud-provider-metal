@@ -165,24 +165,17 @@ func (o *metalInstancesV2) getNodeAddresses(ctx context.Context, server *metalv1
 	}
 	ipamKind := o.cloudConfig.Networking.IPAMKind
 	if ipamKind.APIGroup == capiv1beta1.GroupVersion.Group && ipamKind.Kind == "IPAddress" {
+		selector := client.MatchingLabels{LabelKeyServerClaim: claim.Namespace + "_" + claim.Name}
 		var allIpClaims capiv1beta1.IPAddressClaimList
-		if err := o.metalClient.List(ctx, &allIpClaims, client.InNamespace(o.metalNamespace)); err != nil {
+		if err := o.metalClient.List(ctx, &allIpClaims, client.InNamespace(o.metalNamespace), selector); err != nil {
 			return nil, err
 		}
 		for _, ipClaim := range allIpClaims.Items {
 			if ipClaim.Status.AddressRef.Name == "" {
 				continue
 			}
-			for _, ownerRef := range ipClaim.OwnerReferences {
-				if ownerRef.Kind != "ServerClaim" {
-					continue
-				}
-				if ownerRef.UID != claim.UID {
-					continue
-				}
-			}
 			var ipAddr capiv1beta1.IPAddress
-			if err := o.metalClient.Get(ctx, client.ObjectKey{Name: ipClaim.Status.AddressRef.Name}, &ipAddr); err != nil {
+			if err := o.metalClient.Get(ctx, client.ObjectKey{Name: ipClaim.Status.AddressRef.Name, Namespace: ipClaim.Namespace}, &ipAddr); err != nil {
 				return nil, fmt.Errorf("failed to get ip address object for node %s: %w", claim.Name, err)
 			}
 			addresses = append(addresses, corev1.NodeAddress{

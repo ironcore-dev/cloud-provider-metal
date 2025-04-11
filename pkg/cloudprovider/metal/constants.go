@@ -16,4 +16,6 @@ const (
 	AnnotationPowerOff = "metal.ironcore.dev/power-off"
 	// LabelKeyClusterName is the label key name used to identify the cluster name in Kubernetes labels
 	LabelKeyClusterName = "kubernetes.io/cluster"
+	// LabelKeyServerClaim is the label key name used to identify the server claim in Kubernetes labels
+	LabelKeyServerClaim = "metal.ironcore.dev/server-claim"
 )
