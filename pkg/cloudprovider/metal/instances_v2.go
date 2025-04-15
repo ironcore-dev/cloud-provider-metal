@@ -165,7 +165,10 @@ func (o *metalInstancesV2) getNodeAddresses(ctx context.Context, server *metalv1
 	}
 	ipamKind := o.cloudConfig.Networking.IPAMKind
 	if ipamKind.APIGroup == capiv1beta1.GroupVersion.Group && ipamKind.Kind == "IPAddress" {
-		selector := client.MatchingLabels{LabelKeyServerClaim: claim.Namespace + "_" + claim.Name}
+		selector := client.MatchingLabels{
+			LabelKeyServerClaimName:      claim.Name,
+			LabelKeyServerClaimNamespace: claim.Namespace,
+		}
 		var allIpClaims capiv1beta1.IPAddressClaimList
 		if err := o.metalClient.List(ctx, &allIpClaims, client.InNamespace(o.metalNamespace), selector); err != nil {
 			return nil, err
