@@ -135,6 +135,8 @@ func (o *metalInstancesV2) InstanceMetadata(ctx context.Context, node *corev1.No
 		klog.V(2).InfoS("No region label found for node instance", "Node", node.Name)
 	}
 
+	klog.V(2).InfoS("Additional labels for node instance", "Node", node.Name, "Labels", server.Labels)
+
 	metaData := &cloudprovider.InstanceMetadata{
 		ProviderID:       providerID,
 		InstanceType:     instanceType,
