@@ -1,0 +1,6 @@
+apiVersion: v2
+name: cloud-provider-metal
+description: A Helm chart to distribute the project cloud-provider-metal
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloud-controller-manager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: kubernetes
+    high-availability-config.resources.gardener.cloud/type: controller
+    role: manager
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.controllerManager.replicas }}
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: kubernetes
+      role: manager
+      {{- include "chart.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: kubernetes
+        gardener.cloud/role: controlplane
+        role: manager
+        {{- include "chart.labels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: true
+      containers:
+      - name: manager
+        args:
+        {{- range .Values.controllerManager.manager.args }}
+        - {{ . }}
+        {{- end }}
+        command:
+        - /metal-cloud-controller-manager
+        image: {{ .Values.controllerManager.manager.image.repository }}:{{ .Values.controllerManager.manager.image.tag }}
+        {{- if .Values.controllerManager.manager.env }}
+        env:
+        {{- range $key, $value := .Values.controllerManager.manager.env }}
+        - name: {{ $key }}
+          value: {{ $value }}
+        {{- end }}
+        {{- end }}
+        livenessProbe:
+          {{- toYaml .Values.controllerManager.manager.livenessProbe | nindent 10 }}
+        ports:
+        - containerPort: {{ .Values.controllerManager.manager.metricsPort }}
+          name: metrics
+          protocol: TCP
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/config
+          name: kube-root-ca
+          readOnly: true
+      dnsPolicy: ClusterFirst
+      hostNetwork: {{ .Values.controllerManager.hostNetwork }}
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      serviceAccountName: {{ .Values.controllerManager.serviceAccountName }}
+      terminationGracePeriodSeconds: {{ .Values.controllerManager.terminationGracePeriodSeconds }}
+      tolerations:
+      - effect: NoSchedule
+        key: node.cloudprovider.kubernetes.io/uninitialized
+        value: "true"
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+      volumes:
+      - configMap:
+          items:
+          - key: ca.crt
+            path: ca
+          name: kube-root-ca.crt
+        name: kube-root-ca
