@@ -62,4 +62,4 @@ jobs:
 
       - name: Push Helm chart to GHCR
         run: |
-          helm push metal-cloud-controller-${{ steps.chart_version.outputs.version }}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
+          helm push cloud-provider-metal-${{ steps.chart_version.outputs.version }}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
