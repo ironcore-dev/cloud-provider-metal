@@ -13,6 +13,12 @@ controllerManager:
       - "--requestheader-client-ca-file=/etc/config/ca"
       - "--use-service-account-credentials"
       - "--v=2"
+    cloudConfig:
+      path: /etc/kubernetes/cloudprovider
+      file: cloudprovider.conf
+      source:
+        configMap:
+          name: cloud-provider-config
     metricsPort: 10258
     livenessProbe:
       failureThreshold: 2

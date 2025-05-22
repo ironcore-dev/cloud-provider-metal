@@ -31,6 +31,7 @@ spec:
         {{- range .Values.controllerManager.manager.args }}
         - {{ . }}
         {{- end }}
+        - "--cloud-config={{ .Values.controllerManager.manager.cloudConfig.path }}/{{ .Values.controllerManager.manager.cloudConfig.file }}"
         command:
         - /metal-cloud-controller-manager
         image: {{ .Values.controllerManager.manager.image.repository }}:{{ .Values.controllerManager.manager.image.tag }}
@@ -53,6 +54,8 @@ spec:
         - mountPath: /etc/config
           name: kube-root-ca
           readOnly: true
+        - mountPath: {{ .Values.controllerManager.manager.cloudConfig.path }}
+          name: cloud-provider-config
       dnsPolicy: ClusterFirst
       hostNetwork: {{ .Values.controllerManager.hostNetwork }}
       restartPolicy: Always
@@ -72,3 +75,5 @@ spec:
             path: ca
           name: kube-root-ca.crt
         name: kube-root-ca
+      - name: cloud-provider-config
+        {{- toYaml .Values.controllerManager.manager.cloudConfig.source | nindent 8 }}
