@@ -31,17 +31,22 @@ spec:
         {{- range .Values.controllerManager.manager.args }}
         - {{ . }}
         {{- end }}
-        - "--cloud-config={{ .Values.controllerManager.manager.cloudConfig.path }}/{{ .Values.controllerManager.manager.cloudConfig.file }}"
+        - "--cloud-config={{ .Values.controllerManager.manager.cloudConfig.dir }}/{{ .Values.controllerManager.manager.cloudConfig.file }}"
+        {{- if .Values.controllerManager.manager.metalKubeconfig.enable }}
+        - "--metal-kubeconfig={{ .Values.controllerManager.manager.metalKubeconfig.dir }}/{{ .Values.controllerManager.manager.metalKubeconfig.file }}"
+        {{- end }}
         command:
         - /metal-cloud-controller-manager
         image: {{ .Values.controllerManager.manager.image.repository }}:{{ .Values.controllerManager.manager.image.tag }}
-        {{- if .Values.controllerManager.manager.env }}
         env:
         {{- range $key, $value := .Values.controllerManager.manager.env }}
         - name: {{ $key }}
           value: {{ $value }}
         {{- end }}
-        {{- end }}
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
         livenessProbe:
           {{- toYaml .Values.controllerManager.manager.livenessProbe | nindent 10 }}
         ports:
@@ -54,8 +59,12 @@ spec:
         - mountPath: /etc/config
           name: kube-root-ca
           readOnly: true
-        - mountPath: {{ .Values.controllerManager.manager.cloudConfig.path }}
+        - mountPath: {{ .Values.controllerManager.manager.cloudConfig.dir }}
           name: cloud-provider-config
+        {{- if .Values.controllerManager.manager.metalKubeconfig.enable }}
+        - mountPath: {{ .Values.controllerManager.manager.metalKubeconfig.dir }}
+          name: metal-kubeconfig
+        {{- end }}
       dnsPolicy: ClusterFirst
       hostNetwork: {{ .Values.controllerManager.hostNetwork }}
       restartPolicy: Always
@@ -77,3 +86,7 @@ spec:
         name: kube-root-ca
       - name: cloud-provider-config
         {{- toYaml .Values.controllerManager.manager.cloudConfig.source | nindent 8 }}
+      {{- if .Values.controllerManager.manager.metalKubeconfig.enable }}
+      - name: metal-kubeconfig
+        {{- toYaml .Values.controllerManager.manager.metalKubeconfig.source | nindent 8 }}
+      {{- end }}
