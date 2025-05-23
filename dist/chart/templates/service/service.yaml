@@ -1,0 +1,17 @@
+{{- if .Values.metrics.enable }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloud-controller-manager-metrics-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  ports:
+    - name: metrics
+      targetPort: {{ .Values.controllerManager.manager.metricsPort }}
+      port: {{ .Values.controllerManager.manager.metricsPort }}
+      protocol: TCP
+  selector:
+    {{- include "chart.selectorLabels" . | nindent 4 }}
+{{- end -}}

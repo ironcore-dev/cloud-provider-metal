@@ -1,0 +1,17 @@
+{{- if .Values.rbac.enable }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cloud-controller-manager-rolebinding
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cloud-controller-manager-role
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.controllerManager.serviceAccountName }}
+  namespace: {{ .Release.Namespace }}
+{{- end -}}
