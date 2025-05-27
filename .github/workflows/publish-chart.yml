@@ -61,12 +61,6 @@ jobs:
           curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
           mv kustomize /usr/local/bin
 
-      - name: Prepare CRDs folder
-        run: |
-          mkdir -p dist/chart/crds
-          kustomize build config/default | yq ea 'select(.kind == "CustomResourceDefinition")' > dist/chart/crds/crds.yaml
-          rm -rf dist/chart/templates/crd
-
       - name: Package Helm chart
         run: |
           helm package dist/chart --version ${{ steps.chart_version.outputs.version }}
