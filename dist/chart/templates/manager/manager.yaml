@@ -77,6 +77,9 @@ spec:
         value: "true"
       - effect: NoSchedule
         key: node-role.kubernetes.io/control-plane
+      - effect: NoSchedule
+        key: node.kubernetes.io/not-ready
+        operator: Exists
       volumes:
       - configMap:
           items:
