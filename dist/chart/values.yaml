@@ -1,0 +1,52 @@
+# [MANAGER]: Manager Deployment Configurations
+controllerManager:
+  replicas: 1
+  manager:
+    image:
+      repository: controller
+      tag: latest
+    args:
+      - "--cloud-provider=metal"
+      - "--concurrent-service-syncs=10"
+      - "--leader-elect=true"
+      - "--secure-port=10258"
+      - "--requestheader-client-ca-file=/etc/config/ca"
+      - "--use-service-account-credentials"
+      - "--v=2"
+    cloudConfig:
+      dir: /etc/kubernetes/cloudprovider
+      file: cloudprovider.conf
+      source:
+        configMap:
+          name: cloud-provider-config
+    metalKubeconfig:
+      enable: true
+      dir: /etc/metal
+      file: metal-kubeconfig
+      source:
+        secret:
+          secretName: metal-kubeconfig
+    metricsPort: 10258
+    livenessProbe:
+      failureThreshold: 2
+      httpGet:
+        path: /healthz
+        port: 10258
+        scheme: HTTPS
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      successThreshold: 1
+      timeoutSeconds: 15
+  terminationGracePeriodSeconds: 30
+  serviceAccountName: cloud-controller-manager
+  hostNetwork: true
+
+# [RBAC]: To enable RBAC (Permissions) configurations
+rbac:
+  enable: true
+
+# [METRICS]: Set to true to generate manifests for exporting metrics.
+# To disable metrics export set false, and ensure that the
+# ControllerManager argument "--secure-port" is removed.
+metrics:
+  enable: true

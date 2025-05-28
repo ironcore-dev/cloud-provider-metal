@@ -62,32 +62,47 @@ func LoadCloudProviderConfig(f io.Reader) (*CloudProviderConfig, error) {
 		return nil, fmt.Errorf("clusterName missing in cloud config")
 	}
 
+	cloudProviderConfig := &CloudProviderConfig{cloudConfig: *cloudConfig}
+
+	if MetalKubeconfigPath == "" {
+		cloudProviderConfig.Namespace = os.Getenv("NAMESPACE")
+		cloudProviderConfig.RestConfig, err = rest.InClusterConfig()
+	} else {
+		err = cloudProviderConfig.setClusterConfigAndNamespace()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to set metal client: %w", err)
+	}
+
+	if cloudProviderConfig.Namespace == "" {
+		return nil, fmt.Errorf("got a empty namespace from metal kubeconfig")
+	}
+
+	klog.V(2).Infof("Successfully read configuration for cloud provider: %s", ProviderName)
+	return cloudProviderConfig, nil
+}
+
+func (c *CloudProviderConfig) setClusterConfigAndNamespace() error {
 	kubeconfigData, err := os.ReadFile(MetalKubeconfigPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read metal kubeconfig %s: %w", MetalKubeconfigPath, err)
+		return fmt.Errorf("failed to read metal kubeconfig %s: %w", MetalKubeconfigPath, err)
 	}
 
 	kubeconfig, err := clientcmd.Load(kubeconfigData)
 	if err != nil {
-		return nil, fmt.Errorf("unable to read metal cluster kubeconfig: %w", err)
+		return fmt.Errorf("unable to read metal cluster kubeconfig: %w", err)
 	}
 	clientConfig := clientcmd.NewDefaultClientConfig(*kubeconfig, nil)
 	restConfig, err := clientConfig.ClientConfig()
 	if err != nil {
-		return nil, fmt.Errorf("unable to get metal cluster rest config: %w", err)
+		return fmt.Errorf("unable to get metal cluster rest config: %w", err)
 	}
 	namespace, _, err := clientConfig.Namespace()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get namespace from metal kubeconfig: %w", err)
+		return fmt.Errorf("failed to get namespace from metal kubeconfig: %w", err)
 	}
-	if namespace == "" {
-		return nil, fmt.Errorf("got a empty namespace from metal kubeconfig")
-	}
-	klog.V(2).Infof("Successfully read configuration for cloud provider: %s", ProviderName)
+	c.RestConfig = restConfig
+	c.Namespace = namespace
 
-	return &CloudProviderConfig{
-		RestConfig:  restConfig,
-		Namespace:   namespace,
-		cloudConfig: *cloudConfig,
-	}, nil
+	return nil
 }

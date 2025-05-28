@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloud-controller-manager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: kubernetes
+    high-availability-config.resources.gardener.cloud/type: controller
+    role: manager
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.controllerManager.replicas }}
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: kubernetes
+      role: manager
+      {{- include "chart.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: kubernetes
+        gardener.cloud/role: controlplane
+        role: manager
+        {{- include "chart.labels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: true
+      containers:
+      - name: manager
+        args:
+        {{- range .Values.controllerManager.manager.args }}
+        - {{ . }}
+        {{- end }}
+        - "--cloud-config={{ .Values.controllerManager.manager.cloudConfig.dir }}/{{ .Values.controllerManager.manager.cloudConfig.file }}"
+        {{- if .Values.controllerManager.manager.metalKubeconfig.enable }}
+        - "--metal-kubeconfig={{ .Values.controllerManager.manager.metalKubeconfig.dir }}/{{ .Values.controllerManager.manager.metalKubeconfig.file }}"
+        {{- end }}
+        command:
+        - /metal-cloud-controller-manager
+        image: {{ .Values.controllerManager.manager.image.repository }}:{{ .Values.controllerManager.manager.image.tag }}
+        env:
+        {{- range $key, $value := .Values.controllerManager.manager.env }}
+        - name: {{ $key }}
+          value: {{ $value }}
+        {{- end }}
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        livenessProbe:
+          {{- toYaml .Values.controllerManager.manager.livenessProbe | nindent 10 }}
+        ports:
+        - containerPort: {{ .Values.controllerManager.manager.metricsPort }}
+          name: metrics
+          protocol: TCP
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/config
+          name: kube-root-ca
+          readOnly: true
+        - mountPath: {{ .Values.controllerManager.manager.cloudConfig.dir }}
+          name: cloud-provider-config
+        {{- if .Values.controllerManager.manager.metalKubeconfig.enable }}
+        - mountPath: {{ .Values.controllerManager.manager.metalKubeconfig.dir }}
+          name: metal-kubeconfig
+        {{- end }}
+      dnsPolicy: ClusterFirst
+      hostNetwork: {{ .Values.controllerManager.hostNetwork }}
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      serviceAccountName: {{ .Values.controllerManager.serviceAccountName }}
+      terminationGracePeriodSeconds: {{ .Values.controllerManager.terminationGracePeriodSeconds }}
+      tolerations:
+      - effect: NoSchedule
+        key: node.cloudprovider.kubernetes.io/uninitialized
+        value: "true"
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+      - effect: NoSchedule
+        key: node.kubernetes.io/not-ready
+        operator: Exists
+      volumes:
+      - configMap:
+          items:
+          - key: ca.crt
+            path: ca
+          name: kube-root-ca.crt
+        name: kube-root-ca
+      - name: cloud-provider-config
+        {{- toYaml .Values.controllerManager.manager.cloudConfig.source | nindent 8 }}
+      {{- if .Values.controllerManager.manager.metalKubeconfig.enable }}
+      - name: metal-kubeconfig
+        {{- toYaml .Values.controllerManager.manager.metalKubeconfig.source | nindent 8 }}
+      {{- end }}

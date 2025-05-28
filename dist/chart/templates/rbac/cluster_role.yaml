@@ -1,0 +1,49 @@
+{{- if .Values.rbac.enable }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cloud-controller-manager-cluster-role
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - delete
+      - get
+      - patch
+      - watch
+      - update
+      - list
+  - apiGroups:
+      - ""
+    resources:
+      - nodes/status
+    verbs:
+      - patch
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - get
+      - watch
+      - list
+  - apiGroups:
+      - ""
+    resources:
+      - services/status
+    verbs:
+      - update
+      - patch
+{{- end -}}
