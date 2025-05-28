@@ -123,6 +123,74 @@ var _ = Describe("InstancesV2", func() {
 		))
 	})
 
+	It("Should get instance info with loopback address", func(ctx SpecContext) {
+		By("Creating a Server")
+		server := &metalv1alpha1.Server{
+			ObjectMeta: metav1.ObjectMeta{
+				GenerateName: "test-",
+				Annotations: map[string]string{
+					LoopbackAddressAnnotation: "10.10.10.10",
+				},
+			},
+			Spec: metalv1alpha1.ServerSpec{
+				UUID:  "12345",
+				Power: "On",
+			},
+		}
+		Expect(k8sClient.Create(ctx, server)).To(Succeed())
+		DeferCleanup(k8sClient.Delete, server)
+
+		By("Patching the Server object to have a valid network interface status")
+		Eventually(UpdateStatus(server, func() {
+			server.Status.PowerState = metalv1alpha1.ServerOnPowerState
+			server.Status.NetworkInterfaces = []metalv1alpha1.NetworkInterface{{
+				Name: "my-nic",
+				IP:   metalv1alpha1.MustParseIP("10.0.0.1"),
+			}}
+		})).Should(Succeed())
+
+		By("Creating a ServerClaim for a Node")
+		serverClaim := &metalv1alpha1.ServerClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace:    ns.Name,
+				GenerateName: "test-",
+			},
+			Spec: metalv1alpha1.ServerClaimSpec{
+				Power:     "On",
+				ServerRef: &corev1.LocalObjectReference{Name: server.Name},
+			},
+		}
+		Expect(k8sClient.Create(ctx, serverClaim)).To(Succeed())
+		DeferCleanup(k8sClient.Delete, serverClaim)
+
+		By("Creating a Node object with a provider ID referencing the machine")
+		node := &corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				GenerateName: "test-",
+			},
+		}
+		Expect(k8sClient.Create(ctx, node)).To(Succeed())
+		DeferCleanup(k8sClient.Delete, node)
+
+		By("Updating the SystemUUID in Node status")
+		Eventually(UpdateStatus(node, func() {
+			node.Status.NodeInfo.SystemUUID = "12345"
+		})).Should(Succeed())
+
+		By("Ensuring that the instance meta data has the correct addresses")
+		instanceMetadata, err := instancesProvider.InstanceMetadata(ctx, node)
+		Expect(err).NotTo(HaveOccurred())
+		Eventually(instanceMetadata).Should(SatisfyAll(
+			HaveField("ProviderID", getProviderID(serverClaim.Namespace, serverClaim.Name)),
+			HaveField("NodeAddresses", ContainElements(
+				corev1.NodeAddress{
+					Type:    corev1.NodeInternalIP,
+					Address: "10.10.10.10",
+				},
+			)),
+		))
+	})
+
 	It("Should power off an annotated server", func(ctx SpecContext) {
 		By("Creating a Server")
 		server := &metalv1alpha1.Server{

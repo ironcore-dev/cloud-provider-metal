@@ -23,8 +23,12 @@ import (
 )
 
 const (
-	ProviderName                = "metal"
+	// ProviderName is the name of the cloud provider
+	ProviderName = "metal"
+	// serverClaimMetadataUIDField is the field used to index ServerClaims by their UID
 	serverClaimMetadataUIDField = ".metadata.uid"
+	// LoopbackAddressAnnotation is the annotation used to specify a loopback address for the Machine
+	LoopbackAddressAnnotation = "metal.ironcore.dev/loopback-address"
 )
 
 var metalScheme = runtime.NewScheme()

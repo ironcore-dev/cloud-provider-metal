@@ -157,6 +157,19 @@ func (o *metalInstancesV2) getNodeAddresses(ctx context.Context, server *metalv1
 		return addresses, nil
 	}
 	if o.cloudConfig.Networking.IPAMKind == nil {
+		loopbackAddress, ok := server.Annotations[LoopbackAddressAnnotation]
+		if ok {
+			klog.V(2).InfoS("Loopback address annotation found for server", "Server", client.ObjectKeyFromObject(server))
+			addresses = append(addresses, corev1.NodeAddress{
+				Type:    corev1.NodeInternalIP,
+				Address: loopbackAddress,
+			})
+			return addresses, nil
+		} else {
+			klog.V(2).InfoS("No loopback address annotation found for server", "Server", client.ObjectKeyFromObject(server))
+		}
+
+		klog.V(2).InfoS("Fallback to server status network interfaces for node addresses", "Server", client.ObjectKeyFromObject(server))
 		for _, iface := range server.Status.NetworkInterfaces {
 			addresses = append(addresses, corev1.NodeAddress{
 				Type:    corev1.NodeInternalIP,
