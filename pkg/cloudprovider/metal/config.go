@@ -40,10 +40,12 @@ type CloudConfig struct {
 
 var (
 	MetalKubeconfigPath string
+	MetalNamespace      string
 )
 
 func AddExtraFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&MetalKubeconfigPath, "metal-kubeconfig", "", "Path to the metal cluster kubeconfig.")
+	fs.StringVar(&MetalNamespace, "metal-namespace", "", "Override metal cluster namespace.")
 }
 
 func LoadCloudProviderConfig(f io.Reader) (*CloudProviderConfig, error) {
@@ -97,9 +99,13 @@ func (c *CloudProviderConfig) setClusterConfigAndNamespace() error {
 	if err != nil {
 		return fmt.Errorf("unable to get metal cluster rest config: %w", err)
 	}
-	namespace, _, err := clientConfig.Namespace()
-	if err != nil {
-		return fmt.Errorf("failed to get namespace from metal kubeconfig: %w", err)
+	namespace := MetalNamespace
+	if namespace == "" {
+		ns, _, err := clientConfig.Namespace()
+		if err != nil {
+			return fmt.Errorf("failed to get namespace from metal kubeconfig: %w", err)
+		}
+		namespace = ns
 	}
 	c.RestConfig = restConfig
 	c.Namespace = namespace

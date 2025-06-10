@@ -119,4 +119,52 @@ var _ = Describe("Config", func() {
 		Expect(err.Error()).To(Equal("clusterName missing in cloud config"))
 		Expect(config).To(BeNil())
 	})
+
+	It("should override the namespace using the MetalNamespace flag", func() {
+		sampleConfig := map[string]string{"clusterName": "my-cluster"}
+		sampleConfigData, err := yaml.Marshal(sampleConfig)
+		Expect(err).NotTo(HaveOccurred())
+
+		kubeconfig := api.Config{
+			Kind:       "Config",
+			APIVersion: "v1",
+			Clusters: map[string]*api.Cluster{"foo": {
+				Server:                   "https://server",
+				CertificateAuthorityData: []byte("12345"),
+			}},
+			AuthInfos: map[string]*api.AuthInfo{
+				"foo": {
+					ClientCertificateData: []byte("12345"),
+					ClientKeyData:         []byte("12345"),
+					Username:              "user",
+				},
+			},
+			Contexts: map[string]*api.Context{
+				"foo": {
+					Cluster:   "foo",
+					AuthInfo:  "user",
+					Namespace: "test",
+				},
+			},
+			CurrentContext: "foo",
+		}
+		kubeconfigData, err := clientcmd.Write(kubeconfig)
+		Expect(err).NotTo(HaveOccurred())
+
+		configReader := strings.NewReader(string(sampleConfigData))
+		kubeconfigFile, err := os.CreateTemp(GinkgoT().TempDir(), "kubeconfig")
+		Expect(err).NotTo(HaveOccurred())
+		defer func() {
+			_ = kubeconfigFile.Close()
+		}()
+		Expect(os.WriteFile(kubeconfigFile.Name(), kubeconfigData, 0666)).To(Succeed())
+		MetalKubeconfigPath = kubeconfigFile.Name()
+		MetalNamespace = "override-namespace"
+
+		config, err := LoadCloudProviderConfig(configReader)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(config.RestConfig).NotTo(BeNil())
+		Expect(config.Namespace).To(Equal("override-namespace"))
+		Expect(config.cloudConfig.ClusterName).To(Equal("my-cluster"))
+	})
 })
