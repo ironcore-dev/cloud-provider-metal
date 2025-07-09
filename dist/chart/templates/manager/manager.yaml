@@ -65,6 +65,10 @@ spec:
         - mountPath: {{ .Values.controllerManager.manager.metalKubeconfig.dir }}
           name: metal-kubeconfig
         {{- end }}
+        {{- if .Values.controllerManager.manager.kubeconfig.enable }}
+        - mountPath: {{ .Values.controllerManager.manager.kubeconfig.dir }}
+          name: kubeconfig
+        {{- end }}
       dnsPolicy: ClusterFirst
       hostNetwork: {{ .Values.controllerManager.hostNetwork }}
       restartPolicy: Always
@@ -92,4 +96,8 @@ spec:
       {{- if .Values.controllerManager.manager.metalKubeconfig.enable }}
       - name: metal-kubeconfig
         {{- toYaml .Values.controllerManager.manager.metalKubeconfig.source | nindent 8 }}
+      {{- end }}
+      {{- if .Values.controllerManager.manager.kubeconfig.enable }}
+      - name: kubeconfig
+        {{- toYaml .Values.controllerManager.manager.kubeconfig.source | nindent 8 }}
       {{- end }}

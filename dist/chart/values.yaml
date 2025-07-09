@@ -19,6 +19,8 @@ controllerManager:
       source:
         configMap:
           name: cloud-provider-config
+    kubeconfig:
+      enable: false
     metalKubeconfig:
       enable: true
       dir: /etc/metal
