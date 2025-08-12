@@ -99,6 +99,15 @@ func (o *cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, 
 	}); err != nil {
 		log.Fatalf("Failed to setup field indexer for server claims: %v", err)
 	}
+	if err := o.targetCluster.GetFieldIndexer().IndexField(ctx, &corev1.Node{}, nodeProviderIDField, func(object client.Object) []string {
+		node := object.(*corev1.Node)
+		if node.Spec.ProviderID == "" {
+			return nil
+		}
+		return []string{node.Spec.ProviderID}
+	}); err != nil {
+		log.Fatalf("Failed to setup field indexer for nodes: %v", err)
+	}
 
 	if _, err := o.targetCluster.GetCache().GetInformer(ctx, &corev1.Node{}); err != nil {
 		log.Fatalf("Failed to setup Node informer: %v", err)
@@ -114,6 +123,18 @@ func (o *cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, 
 	go func() {
 		if err := o.targetCluster.Start(ctx); err != nil {
 			log.Fatalf("Failed to start target cluster: %v", err)
+		}
+	}()
+
+	var serverClaim metalv1alpha1.ServerClaim
+	claimInformer, err := o.metalCluster.GetCache().GetInformer(ctx, &serverClaim)
+	if err != nil {
+		log.Fatalf("Failed to setup ServerClaim informer: %v", err)
+	}
+	serverClaimReconciler := NewServerClaimReconciler(o.targetCluster.GetClient(), o.metalCluster.GetClient(), claimInformer)
+	go func() {
+		if err := serverClaimReconciler.Start(ctx); err != nil {
+			log.Fatalf("Failed to start ServerClaim reconciler: %v", err)
 		}
 	}()
 
