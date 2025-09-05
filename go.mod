@@ -5,7 +5,7 @@ go 1.24.0
 require (
 	github.com/ironcore-dev/controller-utils v0.10.0
 	github.com/ironcore-dev/metal-operator v0.0.0-20250321103049-c38d5c179da6
-	github.com/onsi/ginkgo/v2 v2.25.1
+	github.com/onsi/ginkgo/v2 v2.25.3
 	github.com/onsi/gomega v1.38.2
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/pflag v1.0.7
