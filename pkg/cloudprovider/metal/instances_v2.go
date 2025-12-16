@@ -83,15 +83,18 @@ func (o *metalInstancesV2) InstanceMetadata(ctx context.Context, node *corev1.No
 	if node == nil {
 		return nil, nil
 	}
+	klog.V(4).InfoS("Getting instance metadata for node", "Node", node.Name)
 
 	var serverClaim *metalv1alpha1.ServerClaim
 
 	serverClaim, err := o.getServerClaimForNode(ctx, node)
 	if err != nil {
+		klog.V(4).InfoS("Could not get server claim for node", "Node", node.Name, "Error", err)
 		return nil, err
 	}
 
 	if serverClaim == nil {
+		klog.V(4).InfoS("Did not find server claim for node", "Node", node.Name)
 		return nil, cloudprovider.InstanceNotFound
 	}
 
@@ -252,6 +255,7 @@ func (o *metalInstancesV2) getServerClaimForNode(ctx context.Context, node *core
 		}
 		//Avoid case mismatch by converting to lower case
 		if nodeInfo := node.Status.NodeInfo; nodeInfo.SystemUUID == strings.ToLower(server.Spec.UUID) {
+			klog.V(4).InfoS("Found server claim for node", "Node", node.Name, "ServerClaim", client.ObjectKeyFromObject(&claim), "Server", server.Name)
 			return &claim, nil
 		}
 	}
