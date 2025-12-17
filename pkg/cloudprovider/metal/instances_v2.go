@@ -92,11 +92,11 @@ func (o *metalInstancesV2) InstanceMetadata(ctx context.Context, node *corev1.No
 		klog.V(4).InfoS("Could not get server claim for node", "Node", node.Name, "Error", err)
 		return nil, err
 	}
-
 	if serverClaim == nil {
 		klog.V(4).InfoS("Did not find server claim for node", "Node", node.Name)
 		return nil, cloudprovider.InstanceNotFound
 	}
+	klog.V(4).InfoS("Found server claim for node", "Node", node.Name, "ServerClaim", client.ObjectKeyFromObject(serverClaim))
 
 	// Add label for clusterName to server claim object
 	serverClaimBase := serverClaim.DeepCopy()
@@ -151,6 +151,8 @@ func (o *metalInstancesV2) InstanceMetadata(ctx context.Context, node *corev1.No
 	if metaData.NodeAddresses, err = o.getNodeAddresses(ctx, server, serverClaim); err != nil {
 		return nil, err
 	}
+
+	klog.V(4).InfoS("Got the following instance metadata for node", "Node", node.Name, "InstanceMetadata", metaData)
 	return metaData, nil
 }
 
