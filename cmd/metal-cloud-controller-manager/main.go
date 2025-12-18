@@ -20,11 +20,14 @@ import (
 	_ "k8s.io/component-base/metrics/prometheus/clientgo"
 	_ "k8s.io/component-base/metrics/prometheus/version"
 	"k8s.io/klog/v2"
+	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 func main() {
 	logs.InitLogs()
 	defer logs.FlushLogs()
+
+	ctrl.SetLogger(klog.NewKlogr())
 
 	ccmOptions, err := options.NewCloudControllerManagerOptions()
 	if err != nil {
