@@ -140,7 +140,7 @@ func (o *cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, 
 	var node corev1.Node
 	nodeInformer, err := o.targetCluster.GetCache().GetInformer(ctx, &node)
 	if err != nil {
-		log.Fatalf("Failed to setip Node informer: %v", err)
+		log.Fatalf("Failed to setup Node informer: %v", err)
 	}
 	nodeReconciler := NewNodeReconciler(o.targetCluster.GetClient(), o.metalCluster.GetClient(), nodeInformer)
 	go func() {

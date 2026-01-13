@@ -25,9 +25,11 @@ linters:
     rules:
       - linters:
           - lll
+          - dupl
         path: cmd/*
       - linters:
           - lll
+          - dupl
         path: pkg/*
     paths:
       - third_party$

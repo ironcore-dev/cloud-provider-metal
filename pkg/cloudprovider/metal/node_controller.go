@@ -131,6 +131,9 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) error 
 }
 
 func parseProviderID(providerID string) (types.NamespacedName, error) {
+	if providerID == "" {
+		return types.NamespacedName{}, errors.New("empty providerID")
+	}
 	provider, rest, ok := strings.Cut(providerID, "://")
 	if !ok || provider == "" {
 		return types.NamespacedName{}, errors.New("invalid providerID: missing scheme")
