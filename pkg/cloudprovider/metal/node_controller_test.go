@@ -1,20 +1,19 @@
-// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and IronCore contributors
+// SPDX-FileCopyrightText: 2024 SAP SE or an SAP affiliate company and IronCore contributors
 // SPDX-License-Identifier: Apache-2.0
 
 package metal
 
 import (
+	metalv1alpha1 "github.com/ironcore-dev/metal-operator/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	. "sigs.k8s.io/controller-runtime/pkg/envtest/komega"
-
-	metalv1alpha1 "github.com/ironcore-dev/metal-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	. "sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 )
 
-var _ = Describe("ServerClaimReconciler", func() {
+var _ = Describe("NodeReconciler", func() {
 
 	var (
 		serverClaim *metalv1alpha1.ServerClaim
@@ -100,17 +99,7 @@ var _ = Describe("ServerClaimReconciler", func() {
 		Expect(k8sClient.Patch(ctx, node, client.MergeFrom(originalNode))).To(Succeed())
 	})
 
-	It("should not change the labels of an operational node", func(ctx SpecContext) {
-		originalNode := node.DeepCopy()
-		testLabels := map[string]string{
-			"test-label": "test-value",
-		}
-		node.Labels = testLabels
-		Expect(k8sClient.Patch(ctx, node, client.MergeFrom(originalNode))).To(Succeed())
-		Consistently(Object(node)).Should(HaveField("Labels", testLabels))
-	})
-
-	It("should copy over the maintenance needed label", func(ctx SpecContext) {
+	It("should copy the approval label for a claim requiring maintenance", func(ctx SpecContext) {
 		originalServerClaim := serverClaim.DeepCopy()
 		serverClaim.Labels = map[string]string{
 			metalv1alpha1.ServerMaintenanceNeededLabelKey: TrueStr,
@@ -119,22 +108,12 @@ var _ = Describe("ServerClaimReconciler", func() {
 
 		Eventually(Object(node)).Should(HaveField("Labels", HaveKeyWithValue(metalv1alpha1.ServerMaintenanceNeededLabelKey, TrueStr)))
 		Consistently(Object(node)).Should(HaveField("Labels", HaveKeyWithValue(metalv1alpha1.ServerMaintenanceNeededLabelKey, TrueStr)))
-	})
 
-	It("should remove the maintenance needed label when not needed", func(ctx SpecContext) {
 		originalNode := node.DeepCopy()
-		node.Labels = map[string]string{
-			metalv1alpha1.ServerMaintenanceNeededLabelKey: TrueStr,
-		}
+		node.Labels[metalv1alpha1.ServerMaintenanceApprovalKey] = TrueStr
 		Expect(k8sClient.Patch(ctx, node, client.MergeFrom(originalNode))).To(Succeed())
-		Eventually(Object(node)).Should(HaveField("Labels", HaveKeyWithValue(metalv1alpha1.ServerMaintenanceNeededLabelKey, TrueStr)))
 
-		// Trigger the reconciler to remove the label
-		originalServerClaim := serverClaim.DeepCopy()
-		serverClaim.Labels = map[string]string{"a": "b"}
-		Expect(k8sClient.Patch(ctx, serverClaim, client.MergeFrom(originalServerClaim))).To(Succeed())
-
-		Eventually(Object(node)).Should(HaveField("Labels", BeEmpty()))
-		Consistently(Object(node)).Should(HaveField("Labels", BeEmpty()))
+		Eventually(Object(serverClaim)).Should(HaveField("Labels", HaveKeyWithValue(metalv1alpha1.ServerMaintenanceApprovalKey, TrueStr)))
 	})
+
 })

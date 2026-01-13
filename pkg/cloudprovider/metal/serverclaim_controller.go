@@ -6,7 +6,6 @@ package metal
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
@@ -20,12 +19,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-const (
-	nodeProviderIDField string        = ".spec.providerID"
-	baseDelay           time.Duration = 5 * time.Second
-	maxDelay            time.Duration = 5 * time.Minute
-)
-
 type ServerClaimReconciler struct {
 	metalClient  client.Client
 	targetClient client.Client
@@ -34,7 +27,7 @@ type ServerClaimReconciler struct {
 }
 
 func NewServerClaimReconciler(targetClient client.Client, metalClient client.Client, claimInformer ctrlcache.Informer) ServerClaimReconciler {
-	rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[types.NamespacedName](baseDelay, maxDelay)
+	rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[types.NamespacedName](BaseReconcilerDelay, MaxReconcilerDelay)
 	queue := workqueue.NewTypedRateLimitingQueue(rateLimiter)
 	return ServerClaimReconciler{
 		targetClient: targetClient,
@@ -112,7 +105,7 @@ func (r *ServerClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	providerID := fmt.Sprintf("%s://%s/%s", ProviderName, serverClaim.Namespace, serverClaim.Name)
 	var nodes corev1.NodeList
-	err := r.targetClient.List(ctx, &nodes, client.MatchingFields{nodeProviderIDField: providerID})
+	err := r.targetClient.List(ctx, &nodes, client.MatchingFields{NodeProviderIDField: providerID})
 	if err != nil {
 		return fmt.Errorf("failed to list nodes with providerID %s: %w", providerID, err)
 	}
@@ -129,8 +122,8 @@ func (r *ServerClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 	originalNode := node.DeepCopy()
 	maintenanceVal := serverClaim.Labels[metalv1alpha1.ServerMaintenanceNeededLabelKey]
-	if maintenanceVal == "true" {
-		node.Labels[metalv1alpha1.ServerMaintenanceNeededLabelKey] = "true"
+	if maintenanceVal == TrueStr {
+		node.Labels[metalv1alpha1.ServerMaintenanceNeededLabelKey] = TrueStr
 	} else {
 		delete(node.Labels, metalv1alpha1.ServerMaintenanceNeededLabelKey)
 	}

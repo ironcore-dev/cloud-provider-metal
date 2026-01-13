@@ -3,6 +3,8 @@
 
 package metal
 
+import "time"
+
 const (
 	// AnnotationKeyClusterName is the cluster name annotation key name
 	AnnotationKeyClusterName = "cluster-name"
@@ -20,4 +22,12 @@ const (
 	LabelKeyServerClaimName = "metal.ironcore.dev/server-claim-name"
 	// LabelKeyServerClaimNamespace is the label key name used to identify the server claim's namespace in Kubernetes labels
 	LabelKeyServerClaimNamespace = "metal.ironcore.dev/server-claim-namespace"
+	// TrueStr contains string value of "true"
+	TrueStr string = "true"
+	// NodeProviderIDField is the field path to the providerID on a node object
+	NodeProviderIDField string = ".spec.providerID"
+	// BaseReconcilerDelay is the base delay of a reconciler with exponential backoff
+	BaseReconcilerDelay time.Duration = 5 * time.Second
+	// MaxReconcilerDelay is the max delay of a reconciler with exponential backoff
+	MaxReconcilerDelay time.Duration = 5 * time.Minute
 )
