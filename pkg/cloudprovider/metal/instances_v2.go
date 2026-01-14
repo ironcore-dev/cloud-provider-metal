@@ -123,7 +123,7 @@ func (o *metalInstancesV2) InstanceMetadata(ctx context.Context, node *corev1.No
 		providerID = fmt.Sprintf("%s://%s/%s", ProviderName, o.metalNamespace, serverClaim.Name)
 	}
 
-	instanceType, ok := server.Labels[metalv1alpha1.InstanceTypeAnnotation]
+	instanceType, ok := server.Labels[metalv1alpha1.AnnotationInstanceType]
 	if !ok {
 		klog.V(2).InfoS("No instance type label found for node instance", "Node", node.Name)
 	}
@@ -176,10 +176,18 @@ func (o *metalInstancesV2) getNodeAddresses(ctx context.Context, server *metalv1
 
 		klog.V(2).InfoS("Fallback to server status network interfaces for node addresses", "Server", client.ObjectKeyFromObject(server))
 		for _, iface := range server.Status.NetworkInterfaces {
-			addresses = append(addresses, corev1.NodeAddress{
-				Type:    corev1.NodeInternalIP,
-				Address: iface.IP.String(),
-			})
+			if iface.IP != nil {
+				addresses = append(addresses, corev1.NodeAddress{
+					Type:    corev1.NodeInternalIP,
+					Address: iface.IP.String(),
+				})
+			}
+			for _, ip := range iface.IPs {
+				addresses = append(addresses, corev1.NodeAddress{
+					Type:    corev1.NodeInternalIP,
+					Address: ip.String(),
+				})
+			}
 		}
 		return addresses, nil
 	}
@@ -255,8 +263,7 @@ func (o *metalInstancesV2) getServerClaimForNode(ctx context.Context, node *core
 		if err := o.metalClient.Get(ctx, client.ObjectKey{Name: claim.Spec.ServerRef.Name}, server); err != nil {
 			return nil, fmt.Errorf("failed to get server object for node %s: %w", node.Name, err)
 		}
-		//Avoid case mismatch by converting to lower case
-		if nodeInfo := node.Status.NodeInfo; nodeInfo.SystemUUID == strings.ToLower(server.Spec.UUID) {
+		if nodeInfo := node.Status.NodeInfo; strings.EqualFold(nodeInfo.SystemUUID, server.Spec.SystemUUID) {
 			klog.V(4).InfoS("Found server claim for node", "Node", node.Name, "ServerClaim", client.ObjectKeyFromObject(&claim), "Server", server.Name)
 			return &claim, nil
 		}
