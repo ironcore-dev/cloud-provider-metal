@@ -109,11 +109,6 @@ func (o *cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, 
 		log.Fatalf("Failed to setup field indexer for nodes: %v", err)
 	}
 
-	if _, err := o.targetCluster.GetCache().GetInformer(ctx, &corev1.Node{}); err != nil {
-		log.Fatalf("Failed to setup Node informer: %v", err)
-	}
-	// TODO: setup informer for Services
-
 	go func() {
 		if err := o.metalCluster.Start(ctx); err != nil {
 			log.Fatalf("Failed to start metal cluster: %v", err)

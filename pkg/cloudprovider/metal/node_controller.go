@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	metalv1alpha1 "github.com/ironcore-dev/metal-operator/api/v1alpha1"
@@ -103,9 +104,6 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) error 
 		klog.V(2).Infof("Node %s not found, skipping reconciliation", req.NamespacedName)
 		return nil
 	}
-	if node.Labels == nil {
-		node.Labels = make(map[string]string)
-	}
 
 	claimName, err := parseProviderID(node.Spec.ProviderID)
 	if err != nil {
@@ -126,6 +124,9 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) error 
 		claim.Labels[metalv1alpha1.ServerMaintenanceApprovalKey] = TrueStr
 	} else {
 		delete(claim.Labels, metalv1alpha1.ServerMaintenanceApprovalKey)
+	}
+	if reflect.DeepEqual(claim, originalClaim) {
+		return nil
 	}
 	return r.metalClient.Patch(ctx, claim, client.MergeFrom(originalClaim))
 }
