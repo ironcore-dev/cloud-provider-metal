@@ -176,7 +176,7 @@ func (o *metalInstancesV2) getNodeAddresses(ctx context.Context, server *metalv1
 
 		klog.V(2).InfoS("Fallback to server status network interfaces for node addresses", "Server", client.ObjectKeyFromObject(server))
 		for _, iface := range server.Status.NetworkInterfaces {
-			if iface.IP != nil {
+			if iface.IP != nil && len(iface.IPs) == 0 {
 				addresses = append(addresses, corev1.NodeAddress{
 					Type:    corev1.NodeInternalIP,
 					Address: iface.IP.String(),
