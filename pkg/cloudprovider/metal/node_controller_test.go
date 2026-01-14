@@ -34,7 +34,7 @@ var _ = Describe("NodeReconciler", func() {
 			ObjectMeta: metav1.ObjectMeta{
 				GenerateName: "test-",
 				Labels: map[string]string{
-					metalv1alpha1.InstanceTypeAnnotation: "foo",
+					metalv1alpha1.AnnotationInstanceType: "foo",
 					corev1.LabelTopologyZone:             "a",
 					corev1.LabelTopologyRegion:           "bar",
 				},
@@ -52,7 +52,7 @@ var _ = Describe("NodeReconciler", func() {
 			server.Status.PowerState = metalv1alpha1.ServerOnPowerState
 			server.Status.NetworkInterfaces = []metalv1alpha1.NetworkInterface{{
 				Name: "my-nic",
-				IP:   metalv1alpha1.MustParseIP("10.0.0.1"),
+				IPs:  []metalv1alpha1.IP{metalv1alpha1.MustParseIP("10.0.0.1")},
 			}}
 		})).Should(Succeed())
 
