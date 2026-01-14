@@ -40,8 +40,8 @@ var _ = Describe("NodeReconciler", func() {
 				},
 			},
 			Spec: metalv1alpha1.ServerSpec{
-				UUID:  "12345",
-				Power: "On",
+				SystemUUID: "12345",
+				Power:      "On",
 			},
 		}
 		Expect(k8sClient.Create(ctx, server)).To(Succeed())
