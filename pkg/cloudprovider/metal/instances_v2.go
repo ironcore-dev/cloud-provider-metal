@@ -38,7 +38,7 @@ func (o *metalInstancesV2) InstanceExists(ctx context.Context, node *corev1.Node
 	if node == nil {
 		return false, nil
 	}
-	klog.V(4).InfoS("Checking if node exists", "Node", node.Name)
+	klog.V(2).InfoS("Checking if node exists", "Node", node.Name)
 
 	serverClaim, err := o.getServerClaimForNode(ctx, node)
 	if err != nil {
@@ -48,7 +48,7 @@ func (o *metalInstancesV2) InstanceExists(ctx context.Context, node *corev1.Node
 		return false, cloudprovider.InstanceNotFound
 	}
 
-	klog.V(4).InfoS("Instance for node exists", "Node", node.Name, "ServerClaim", client.ObjectKeyFromObject(serverClaim))
+	klog.V(2).InfoS("Instance for node exists", "Node", node.Name, "ServerClaim", client.ObjectKeyFromObject(serverClaim))
 	return true, nil
 }
 
@@ -56,7 +56,7 @@ func (o *metalInstancesV2) InstanceShutdown(ctx context.Context, node *corev1.No
 	if node == nil {
 		return false, nil
 	}
-	klog.V(4).InfoS("Checking if instance is shut down", "Node", node.Name)
+	klog.V(2).InfoS("Checking if instance is shut down", "Node", node.Name)
 
 	serverClaim, err := o.getServerClaimForNode(ctx, node)
 	if err != nil {
@@ -75,7 +75,7 @@ func (o *metalInstancesV2) InstanceShutdown(ctx context.Context, node *corev1.No
 	}
 
 	nodeShutDownStatus := server.Status.PowerState == metalv1alpha1.ServerOffPowerState
-	klog.V(4).InfoS("Instance shut down status", "NodeShutdown", nodeShutDownStatus)
+	klog.V(2).InfoS("Instance shut down status", "NodeShutdown", nodeShutDownStatus)
 	return nodeShutDownStatus, nil
 }
 
@@ -83,20 +83,20 @@ func (o *metalInstancesV2) InstanceMetadata(ctx context.Context, node *corev1.No
 	if node == nil {
 		return nil, nil
 	}
-	klog.V(4).InfoS("Getting instance metadata for node", "Node", node.Name)
+	klog.V(2).InfoS("Getting instance metadata for node", "Node", node.Name)
 
 	var serverClaim *metalv1alpha1.ServerClaim
 
 	serverClaim, err := o.getServerClaimForNode(ctx, node)
 	if err != nil {
-		klog.V(4).InfoS("Could not get server claim for node", "Node", node.Name, "Error", err)
+		klog.V(2).InfoS("Could not get server claim for node", "Node", node.Name, "Error", err)
 		return nil, err
 	}
 	if serverClaim == nil {
-		klog.V(4).InfoS("Did not find server claim for node", "Node", node.Name)
+		klog.V(2).InfoS("Did not find server claim for node", "Node", node.Name)
 		return nil, cloudprovider.InstanceNotFound
 	}
-	klog.V(4).InfoS("Found server claim for node", "Node", node.Name, "ServerClaim", client.ObjectKeyFromObject(serverClaim))
+	klog.V(2).InfoS("Found server claim for node", "Node", node.Name, "ServerClaim", client.ObjectKeyFromObject(serverClaim))
 
 	// Add label for clusterName to server claim object
 	serverClaimBase := serverClaim.DeepCopy()
@@ -152,7 +152,7 @@ func (o *metalInstancesV2) InstanceMetadata(ctx context.Context, node *corev1.No
 		return nil, err
 	}
 
-	klog.V(4).InfoS("Got the following instance metadata for node", "Node", node.Name, "InstanceMetadata", metaData)
+	klog.V(2).InfoS("Got the following instance metadata for node", "Node", node.Name, "InstanceMetadata", metaData)
 	return metaData, nil
 }
 
@@ -264,7 +264,7 @@ func (o *metalInstancesV2) getServerClaimForNode(ctx context.Context, node *core
 			return nil, fmt.Errorf("failed to get server object for node %s: %w", node.Name, err)
 		}
 		if nodeInfo := node.Status.NodeInfo; strings.EqualFold(nodeInfo.SystemUUID, server.Spec.SystemUUID) {
-			klog.V(4).InfoS("Found server claim for node", "Node", node.Name, "ServerClaim", client.ObjectKeyFromObject(&claim), "Server", server.Name)
+			klog.V(2).InfoS("Found server claim for node", "Node", node.Name, "ServerClaim", client.ObjectKeyFromObject(&claim), "Server", server.Name)
 			return &claim, nil
 		}
 	}
