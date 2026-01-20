@@ -41,11 +41,13 @@ type CloudConfig struct {
 var (
 	MetalKubeconfigPath string
 	MetalNamespace      string
+	PodPrefixSize       int
 )
 
 func AddExtraFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&MetalKubeconfigPath, "metal-kubeconfig", "", "Path to the metal cluster kubeconfig.")
 	fs.StringVar(&MetalNamespace, "metal-namespace", "", "Override metal cluster namespace.")
+	fs.IntVar(&PodPrefixSize, "pod-prefix-size", 0, "Prefix size for the pod prefix, zero or less disables pod prefix assignment.")
 }
 
 func LoadCloudProviderConfig(f io.Reader) (*CloudProviderConfig, error) {

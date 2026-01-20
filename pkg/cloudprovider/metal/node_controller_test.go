@@ -4,6 +4,8 @@
 package metal
 
 import (
+	"net"
+
 	metalv1alpha1 "github.com/ironcore-dev/metal-operator/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -116,4 +118,105 @@ var _ = Describe("NodeReconciler", func() {
 		Eventually(Object(serverClaim)).Should(HaveField("Labels", HaveKeyWithValue(metalv1alpha1.ServerMaintenanceApprovalKey, TrueStr)))
 	})
 
+	Context("PodCIDR assignment", func() {
+		BeforeEach(func() {
+			PodPrefixSize = 24
+		})
+
+		AfterEach(func() {
+			PodPrefixSize = 0
+		})
+
+		It("should assign PodCIDR to a node with NodeInternalIP", func(ctx SpecContext) {
+			By("Setting the NodeInternalIP address on the node")
+			Eventually(UpdateStatus(node, func() {
+				node.Status.Addresses = append(node.Status.Addresses, corev1.NodeAddress{
+					Type:    corev1.NodeInternalIP,
+					Address: "10.0.5.42",
+				})
+			})).Should(Succeed())
+
+			By("Verifying PodCIDR is assigned to the node")
+			Eventually(Object(node)).Should(HaveField("Spec.PodCIDR", "10.0.5.0/24"))
+			Eventually(Object(node)).Should(HaveField("Spec.PodCIDRs", ContainElement("10.0.5.0/24")))
+		})
+
+		It("should not overwrite existing PodCIDR", func(ctx SpecContext) {
+			By("Setting the PodCIDR on the node")
+			originalNode := node.DeepCopy()
+			node.Spec.PodCIDR = "192.168.0.0/24"
+			Expect(k8sClient.Patch(ctx, node, client.MergeFrom(originalNode))).To(Succeed())
+
+			By("Setting the NodeInternalIP address on the node")
+			Eventually(UpdateStatus(node, func() {
+				node.Status.Addresses = append(node.Status.Addresses, corev1.NodeAddress{
+					Type:    corev1.NodeInternalIP,
+					Address: "10.0.5.42",
+				})
+			})).Should(Succeed())
+
+			By("Verifying PodCIDR was not overwritten")
+			Consistently(Object(node)).Should(HaveField("Spec.PodCIDR", "192.168.0.0/24"))
+		})
+
+		It("should not assign PodCIDR if node has no NodeInternalIP", func(ctx SpecContext) {
+			By("Triggering reconciliation by patching the claim")
+			originalServerClaim := serverClaim.DeepCopy()
+			serverClaim.Labels = map[string]string{
+				metalv1alpha1.ServerMaintenanceNeededLabelKey: TrueStr,
+			}
+			Expect(k8sClient.Patch(ctx, serverClaim, client.MergeFrom(originalServerClaim))).To(Succeed())
+
+			By("Verifying PodCIDR remains empty")
+			Consistently(Object(node)).Should(HaveField("Spec.PodCIDR", ""))
+		})
+
+		It("should not assign PodCIDR if PodPrefixSize is disabled", func(ctx SpecContext) {
+			By("Disabling PodCIDR assignment")
+			PodPrefixSize = 0
+
+			By("Setting the NodeInternalIP address on the node")
+			Eventually(UpdateStatus(node, func() {
+				node.Status.Addresses = append(node.Status.Addresses, corev1.NodeAddress{
+					Type:    corev1.NodeInternalIP,
+					Address: "10.0.5.42",
+				})
+			})).Should(Succeed())
+
+			By("Triggering reconciliation by patching the claim")
+			originalServerClaim := serverClaim.DeepCopy()
+			serverClaim.Labels = map[string]string{
+				metalv1alpha1.ServerMaintenanceNeededLabelKey: TrueStr,
+			}
+			Expect(k8sClient.Patch(ctx, serverClaim, client.MergeFrom(originalServerClaim))).To(Succeed())
+
+			By("Verifying PodCIDR remains empty despite having NodeInternalIP")
+			Consistently(Object(node)).Should(HaveField("Spec.PodCIDR", ""))
+		})
+	})
+})
+
+var _ = Describe("zeroHostBits", func() {
+	DescribeTable("should correctly mask IPv4 addresses",
+		func(ip string, maskSize int, expected string) {
+			result := zeroHostBits(net.ParseIP(ip), maskSize)
+			Expect(result.String()).To(Equal(expected))
+		},
+		Entry("mask /24", "10.0.5.42", 24, "10.0.5.0"),
+		Entry("mask /16", "10.0.5.42", 16, "10.0.0.0"),
+		Entry("mask /8", "10.20.30.40", 8, "10.0.0.0"),
+		Entry("mask /32", "10.0.5.42", 32, "10.0.5.42"),
+		Entry("mask /0", "10.0.5.42", 0, "0.0.0.0"),
+	)
+
+	DescribeTable("should correctly mask IPv6 addresses",
+		func(ip string, maskSize int, expected string) {
+			result := zeroHostBits(net.ParseIP(ip), maskSize)
+			Expect(result.String()).To(Equal(expected))
+		},
+		Entry("mask /64", "2001:db8::1", 64, "2001:db8::"),
+		Entry("mask /48", "2001:db8:1234:5678::1", 48, "2001:db8:1234::"),
+		Entry("mask /128", "2001:db8::1", 128, "2001:db8::1"),
+		Entry("mask /0", "2001:db8::1", 0, "::"),
+	)
 })

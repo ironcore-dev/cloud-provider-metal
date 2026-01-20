@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"reflect"
 	"strings"
 
@@ -125,10 +126,52 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) error 
 	} else {
 		delete(claim.Labels, metalv1alpha1.ServerMaintenanceApprovalKey)
 	}
-	if reflect.DeepEqual(claim, originalClaim) {
+	if !reflect.DeepEqual(claim, originalClaim) {
+		if err = r.metalClient.Patch(ctx, claim, client.MergeFrom(originalClaim)); err != nil {
+			return err
+		}
+	}
+
+	if PodPrefixSize <= 0 {
+		// <= 0 disables automatic assignment of pod CIDR.
 		return nil
 	}
-	return r.metalClient.Patch(ctx, claim, client.MergeFrom(originalClaim))
+
+	if node.Spec.PodCIDR != "" {
+		klog.InfoS("PodCIDR is already populated; patch was not done", "Node", node.Name, "PodCIDR", node.Spec.PodCIDR)
+		return nil
+	}
+
+	for _, addr := range node.Status.Addresses {
+		if addr.Type == corev1.NodeInternalIP {
+			ip := net.ParseIP(addr.Address)
+			if ip == nil {
+				return fmt.Errorf("invalid IP address format")
+			}
+
+			maskedIP := zeroHostBits(ip, PodPrefixSize)
+			podCIDR := fmt.Sprintf("%s/%d", maskedIP, PodPrefixSize)
+
+			nodeBase := node.DeepCopy()
+			node.Spec.PodCIDR = podCIDR
+			if node.Spec.PodCIDRs == nil {
+				node.Spec.PodCIDRs = []string{}
+			}
+			node.Spec.PodCIDRs = append(node.Spec.PodCIDRs, podCIDR)
+
+			if err := r.targetClient.Patch(ctx, node, client.MergeFrom(nodeBase)); err != nil {
+				return fmt.Errorf("failed to patch Node's PodCIDR with error %w", err)
+			}
+
+			klog.InfoS("Patched Node's PodCIDR and PodCIDRs", "Node", node.Name, "PodCIDR", podCIDR)
+
+			return nil
+		}
+	}
+
+	klog.Info("Node does not have a NodeInternalIP, not setting podCIDR")
+
+	return nil
 }
 
 func parseProviderID(providerID string) (types.NamespacedName, error) {
@@ -144,4 +187,14 @@ func parseProviderID(providerID string) (types.NamespacedName, error) {
 		return types.NamespacedName{}, errors.New("invalid providerID: unexpected count of forward slashes")
 	}
 	return types.NamespacedName{Namespace: parts[0], Name: parts[1]}, nil
+}
+
+func zeroHostBits(ip net.IP, maskSize int) net.IP {
+	if ip.To4() != nil {
+		mask := net.CIDRMask(maskSize, 32)
+		return ip.Mask(mask)
+	} else {
+		mask := net.CIDRMask(maskSize, 128)
+		return ip.Mask(mask)
+	}
 }
