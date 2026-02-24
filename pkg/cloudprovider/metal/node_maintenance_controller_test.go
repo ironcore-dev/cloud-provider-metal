@@ -68,7 +68,9 @@ var _ = Describe("NodeMaintenanceReconciler", func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, node)).To(Succeed())
-		DeferCleanup(k8sClient.Delete, node)
+		DeferCleanup(func(ctx SpecContext) error {
+			return client.IgnoreNotFound(k8sClient.Delete(ctx, node))
+		})
 
 		originalNode := node.DeepCopy()
 		node.Spec.ProviderID = fmt.Sprintf("metal://%s/%s", serverClaim.Namespace, serverClaim.Name)
@@ -100,6 +102,9 @@ var _ = Describe("NodeMaintenanceReconciler", func() {
 			Expect(maintenanceCR.Spec.Priority).To(Equal(int32(100)))
 			Expect(maintenanceCR.Spec.ServerRef).NotTo(BeNil())
 			Expect(maintenanceCR.Spec.ServerRef.Name).To(Equal(serverClaim.Spec.ServerRef.Name))
+
+			By("Verifying the finalizer is added to the Node")
+			Eventually(Object(node)).Should(HaveField("Finalizers", ContainElement(nodeMaintenanceFinalizer)))
 		})
 
 		It("should do nothing if ServerMaintenance CR already exists (idempotency)", func(ctx SpecContext) {
@@ -110,6 +115,7 @@ var _ = Describe("NodeMaintenanceReconciler", func() {
 					Labels: map[string]string{
 						"test-marker": "do-not-overwrite",
 					},
+					Finalizers: []string{nodeMaintenanceFinalizer},
 				},
 				Spec: metalv1alpha1.ServerMaintenanceSpec{
 					Policy:   metalv1alpha1.ServerMaintenancePolicyOwnerApproval,
@@ -136,6 +142,9 @@ var _ = Describe("NodeMaintenanceReconciler", func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(checkCR.Labels).To(HaveKeyWithValue("test-marker", "do-not-overwrite"))
 			}).Should(Succeed())
+
+			By("Verifying the finalizer is present in the Node")
+			Consistently(Object(node)).Should(HaveField("Finalizers", ContainElement(nodeMaintenanceFinalizer)))
 		})
 
 		It("should delete the ServerMaintenance CR when the maintenance-requested label is removed", func(ctx SpecContext) {
@@ -166,6 +175,9 @@ var _ = Describe("NodeMaintenanceReconciler", func() {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
 			}).Should(Succeed())
+
+			By("Verifying the finalizer is removed from the Node")
+			Eventually(Object(node)).ShouldNot(HaveField("Finalizers", ContainElement(nodeMaintenanceFinalizer)))
 		})
 
 		It("should do nothing if the label is absent and CR does not exist (idempotency)", func(ctx SpecContext) {
@@ -184,6 +196,47 @@ var _ = Describe("NodeMaintenanceReconciler", func() {
 
 			Consistently(func(g Gomega) {
 				err := k8sClient.Get(ctx, maintenanceKey, maintenanceCR)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
+			}).Should(Succeed())
+
+			Consistently(Object(node)).ShouldNot(HaveField("Finalizers", ContainElement(nodeMaintenanceFinalizer)))
+		})
+
+		It("should handle Node deletion by cleaning up the CR and removing the finalizer", func(ctx SpecContext) {
+			By("Triggering maintenance to create CR and add finalizer")
+			originalNode := node.DeepCopy()
+			if node.Labels == nil {
+				node.Labels = make(map[string]string)
+			}
+			node.Labels[metalv1alpha1.ServerMaintenanceRequestedLabelKey] = TrueStr
+			Expect(k8sClient.Patch(ctx, node, client.MergeFrom(originalNode))).To(Succeed())
+
+			maintenanceKey := client.ObjectKey{
+				Namespace: serverClaim.Namespace,
+				Name:      serverClaim.Name,
+			}
+			maintenanceCR := &metalv1alpha1.ServerMaintenance{}
+
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, maintenanceKey, maintenanceCR)
+				g.Expect(err).NotTo(HaveOccurred())
+			}).Should(Succeed())
+			Eventually(Object(node)).Should(HaveField("Finalizers", ContainElement(nodeMaintenanceFinalizer)))
+
+			By("Deleting the Node")
+			Expect(k8sClient.Delete(ctx, node)).To(Succeed())
+
+			By("Verifying the ServerMaintenance CR is deleted first")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, maintenanceKey, maintenanceCR)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
+			}).Should(Succeed())
+
+			By("Verifying the Node is completely deleted (finalizer was removed)")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(node), &corev1.Node{})
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
 			}).Should(Succeed())
@@ -272,5 +325,8 @@ var _ = Describe("parseProviderID", func() {
 		Entry("missing provider before scheme", "://default/node-1", types.NamespacedName{}, true),
 		Entry("missing namespace or name (no slash)", "metal://node-1", types.NamespacedName{}, true),
 		Entry("too many slashes", "metal://default/node-1/extra", types.NamespacedName{}, true),
+		Entry("empty namespace", "metal:///name", types.NamespacedName{}, true),
+		Entry("empty name", "metal://namespace/", types.NamespacedName{}, true),
+		Entry("empty name and namespace", "metal:///", types.NamespacedName{}, true),
 	)
 })

@@ -19,7 +19,10 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlcache "sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
+
+const nodeMaintenanceFinalizer = "cloud-provider-metal.ironcore.dev/node-maintenance"
 
 type NodeMaintenanceReconciler struct {
 	metalClient  client.Client
@@ -133,6 +136,11 @@ func (r *NodeMaintenanceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	l = l.WithValues("server-claim-name", serverClaimKey.Name, "server-claim-namespace", serverClaimKey.Namespace)
 
+	if !node.DeletionTimestamp.IsZero() {
+		l.Info("Node is deleting, reconciling delete flow")
+		return r.reconcileDelete(ctx, node, serverClaimKey)
+	}
+
 	serverClaim := &metalv1alpha1.ServerClaim{}
 	if err = r.metalClient.Get(ctx, serverClaimKey, serverClaim); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -151,6 +159,13 @@ func (r *NodeMaintenanceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	maintenanceRequested := node.Labels[metalv1alpha1.ServerMaintenanceRequestedLabelKey] == TrueStr
 
 	if maintenanceRequested {
+		base := node.DeepCopy()
+		if added := controllerutil.AddFinalizer(node, nodeMaintenanceFinalizer); added {
+			if err = r.targetClient.Patch(ctx, node, client.MergeFrom(base)); err != nil {
+				return fmt.Errorf("unable to add finalizer: %w", err)
+			}
+		}
+
 		serverName := serverClaim.Spec.ServerRef.Name
 
 		if err = r.ensureServerMaintenanceExists(ctx, maintenanceKey, serverName); err != nil {
@@ -160,6 +175,13 @@ func (r *NodeMaintenanceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	} else {
 		if err = r.ensureServerMaintenanceNotExists(ctx, maintenanceKey); err != nil {
 			return fmt.Errorf("unable to ensure ServerMaintenance CR not exists: %w", err)
+		}
+
+		base := node.DeepCopy()
+		if removed := controllerutil.RemoveFinalizer(node, nodeMaintenanceFinalizer); removed {
+			if err := r.targetClient.Patch(ctx, node, client.MergeFrom(base)); err != nil {
+				return fmt.Errorf("unable to remove finalizer: %w", err)
+			}
 		}
 	}
 
@@ -178,22 +200,23 @@ func (r *NodeMaintenanceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	return nil
 }
 
-func parseProviderID(providerID string) (types.NamespacedName, error) {
-	if providerID == "" {
-		return types.NamespacedName{}, errors.New("empty providerID")
+func (r *NodeMaintenanceReconciler) reconcileDelete(ctx context.Context, node *corev1.Node, serverClaimKey types.NamespacedName) error {
+	if !controllerutil.ContainsFinalizer(node, nodeMaintenanceFinalizer) {
+		return nil
 	}
 
-	provider, rest, ok := strings.Cut(providerID, "://")
-	if !ok || provider == "" {
-		return types.NamespacedName{}, errors.New("missing scheme")
+	if err := r.ensureServerMaintenanceNotExists(ctx, serverClaimKey); err != nil {
+		return fmt.Errorf("unable to cleanup ServerMaintenance: %w", err)
 	}
 
-	parts := strings.Split(rest, "/")
-	if len(parts) != 2 {
-		return types.NamespacedName{}, errors.New("unexpected count of forward slashes")
+	base := node.DeepCopy()
+	if removed := controllerutil.RemoveFinalizer(node, nodeMaintenanceFinalizer); removed {
+		if err := r.targetClient.Patch(ctx, node, client.MergeFrom(base)); err != nil {
+			return fmt.Errorf("unable to remove finalizer: %w", err)
+		}
 	}
 
-	return types.NamespacedName{Namespace: parts[0], Name: parts[1]}, nil
+	return nil
 }
 
 func (r *NodeMaintenanceReconciler) ensureServerMaintenanceExists(ctx context.Context, key types.NamespacedName, serverName string) error {
@@ -266,4 +289,26 @@ func (r *NodeMaintenanceReconciler) syncServerClaimApproval(ctx context.Context,
 	}
 
 	return nil
+}
+
+func parseProviderID(providerID string) (types.NamespacedName, error) {
+	if providerID == "" {
+		return types.NamespacedName{}, errors.New("empty providerID")
+	}
+
+	provider, rest, ok := strings.Cut(providerID, "://")
+	if !ok || provider == "" {
+		return types.NamespacedName{}, errors.New("missing scheme")
+	}
+
+	parts := strings.Split(rest, "/")
+	if len(parts) != 2 {
+		return types.NamespacedName{}, errors.New("unexpected count of forward slashes")
+	}
+
+	if parts[0] == "" || parts[1] == "" {
+		return types.NamespacedName{}, errors.New("missing namespace or name")
+	}
+
+	return types.NamespacedName{Namespace: parts[0], Name: parts[1]}, nil
 }
