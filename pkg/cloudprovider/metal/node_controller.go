@@ -5,13 +5,9 @@ package metal
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
-	"reflect"
-	"strings"
 
-	metalv1alpha1 "github.com/ironcore-dev/metal-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
@@ -106,32 +102,6 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) error 
 		return nil
 	}
 
-	claimName, err := parseProviderID(node.Spec.ProviderID)
-	if err != nil {
-		return err
-	}
-
-	claim := &metalv1alpha1.ServerClaim{}
-	if err := r.metalClient.Get(ctx, claimName, claim); err != nil {
-		return err
-	}
-	if claim.Labels == nil {
-		claim.Labels = make(map[string]string)
-	}
-	maintenanceVal := claim.Labels[metalv1alpha1.ServerMaintenanceNeededLabelKey]
-	approvalVal := node.Labels[metalv1alpha1.ServerMaintenanceApprovalKey]
-	originalClaim := claim.DeepCopy()
-	if maintenanceVal == TrueStr && approvalVal == TrueStr {
-		claim.Labels[metalv1alpha1.ServerMaintenanceApprovalKey] = TrueStr
-	} else {
-		delete(claim.Labels, metalv1alpha1.ServerMaintenanceApprovalKey)
-	}
-	if !reflect.DeepEqual(claim, originalClaim) {
-		if err = r.metalClient.Patch(ctx, claim, client.MergeFrom(originalClaim)); err != nil {
-			return err
-		}
-	}
-
 	if PodPrefixSize <= 0 {
 		// <= 0 disables automatic assignment of pod CIDR.
 		return nil
@@ -172,21 +142,6 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) error 
 	klog.Info("Node does not have a NodeInternalIP, not setting podCIDR")
 
 	return nil
-}
-
-func parseProviderID(providerID string) (types.NamespacedName, error) {
-	if providerID == "" {
-		return types.NamespacedName{}, errors.New("empty providerID")
-	}
-	provider, rest, ok := strings.Cut(providerID, "://")
-	if !ok || provider == "" {
-		return types.NamespacedName{}, errors.New("invalid providerID: missing scheme")
-	}
-	parts := strings.Split(rest, "/")
-	if len(parts) != 2 {
-		return types.NamespacedName{}, errors.New("invalid providerID: unexpected count of forward slashes")
-	}
-	return types.NamespacedName{Namespace: parts[0], Name: parts[1]}, nil
 }
 
 func zeroHostBits(ip net.IP, maskSize int) net.IP {

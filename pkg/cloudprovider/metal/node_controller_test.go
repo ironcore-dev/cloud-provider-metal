@@ -101,23 +101,6 @@ var _ = Describe("NodeReconciler", func() {
 		Expect(k8sClient.Patch(ctx, node, client.MergeFrom(originalNode))).To(Succeed())
 	})
 
-	It("should copy the approval label for a claim requiring maintenance", func(ctx SpecContext) {
-		originalServerClaim := serverClaim.DeepCopy()
-		serverClaim.Labels = map[string]string{
-			metalv1alpha1.ServerMaintenanceNeededLabelKey: TrueStr,
-		}
-		Expect(k8sClient.Patch(ctx, serverClaim, client.MergeFrom(originalServerClaim))).To(Succeed())
-
-		Eventually(Object(node)).Should(HaveField("Labels", HaveKeyWithValue(metalv1alpha1.ServerMaintenanceNeededLabelKey, TrueStr)))
-		Consistently(Object(node)).Should(HaveField("Labels", HaveKeyWithValue(metalv1alpha1.ServerMaintenanceNeededLabelKey, TrueStr)))
-
-		originalNode := node.DeepCopy()
-		node.Labels[metalv1alpha1.ServerMaintenanceApprovalKey] = TrueStr
-		Expect(k8sClient.Patch(ctx, node, client.MergeFrom(originalNode))).To(Succeed())
-
-		Eventually(Object(serverClaim)).Should(HaveField("Labels", HaveKeyWithValue(metalv1alpha1.ServerMaintenanceApprovalKey, TrueStr)))
-	})
-
 	Context("PodCIDR assignment", func() {
 		BeforeEach(func() {
 			PodPrefixSize = 24
