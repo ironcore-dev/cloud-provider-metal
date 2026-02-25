@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: manager
+spec:
+  strategy:
+    type: Recreate
+  template:
+    spec:
+      containers:
+        - name: manager
+          image: controller
+          imagePullPolicy: IfNotPresent
+          args:
+            - --cloud-provider=metal
+            - --cloud-config=/etc/kubernetes/cloud-config/cloud-config
+            - --metal-kubeconfig=/etc/kubernetes/cloud-config/kubeconfig
+            - --concurrent-service-syncs=10
+            - --leader-elect=false
+            - --secure-port=10258
+            - --v=2
+          volumeMounts:
+            - mountPath: /etc/kubernetes/cloud-config
+              name: cloud-config
+              readOnly: true
+      volumes:
+        - name: cloud-config
+          secret:
+            secretName: metal-cloud-config

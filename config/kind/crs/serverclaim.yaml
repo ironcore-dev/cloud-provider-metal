@@ -1,0 +1,13 @@
+apiVersion: metal.ironcore.dev/v1alpha1
+kind: ServerClaim
+metadata:
+  name: server-1
+  namespace: default
+spec:
+  image: "test-image"
+  power: "On"
+  serverRef:
+    name: physical-server-1
+  serverSelector:
+    matchLabels:
+      machine: "true"

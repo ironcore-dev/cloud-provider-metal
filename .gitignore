@@ -25,3 +25,10 @@ vendor
 *.swo
 *~
 dev/
+
+.tiltbuild
+
+# kind configs
+config/kind/mgmt-kubeconfig-external
+config/kind/mgmt-kubeconfig-internal
+config/kind/worker-kubeconfig

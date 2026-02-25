@@ -67,6 +67,22 @@ check-license: addlicense ## Check that every file has a license header present.
 
 check: add-license lint test
 
+.PHONY: kind-setup
+kind-setup:
+	kind create cluster --name mgmt
+	kind create cluster --name worker
+
+.PHONY: export-kubeconfig
+export-kubeconfig:
+	kind get kubeconfig --name mgmt > ./config/kind/mgmt-kubeconfig-external # for applying crds to mgmt cluster via tilt
+	kind get kubeconfig --name mgmt --internal > ./config/kind/mgmt-kubeconfig-internal # for ccm config (it needs access to mgmt cluster)
+	kind get kubeconfig --name worker > ./config/kind/worker-kubeconfig # for applying crds to worker cluster via tilt
+
+.PHONY: tilt-up
+tilt-up: kind-setup export-kubeconfig
+	KUBECONFIG=./config/kind/mgmt-kubeconfig:./config/kind/worker-kubeconfig
+	tilt up
+
 ##@ Build
 
 .PHONY: build
@@ -78,7 +94,7 @@ run: fmt vet ## Run a metal cloud controller from your host.
 	go run ./cmd/metal-cloud-controller-manager/main.go
 
 .PHONY: docker-build
-docker-build: test ## Build docker image with the metal cloud controller.
+docker-build: ## Build docker image with the metal cloud controller.
 	$(CONTAINER_TOOL) build -t ${CONTROLLER_IMG} .
 
 .PHONY: docker-push

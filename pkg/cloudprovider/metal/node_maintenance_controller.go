@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
 	metalv1alpha1 "github.com/ironcore-dev/metal-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -96,7 +97,7 @@ func (r *NodeMaintenanceReconciler) Start(ctx context.Context) error {
 			func() {
 				defer r.queue.Done(key)
 
-				reqL := l.WithValues("namespace", key.Namespace, "node-name", key.Name)
+				reqL := l.WithValues("namespace", key.Namespace, "node-name", key.Name, "reconcile-id", uuid.NewString())
 				reqCtx := ctrl.LoggerInto(ctx, reqL)
 
 				if err = r.Reconcile(reqCtx, ctrl.Request{NamespacedName: key}); err != nil {

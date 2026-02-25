@@ -1,0 +1,6 @@
+clusterName: kind-ccm
+networking:
+  configureNodeAddresses: true
+  ipamKind:
+    apiGroup: metal.ironcore.dev
+    kind: ServerClaim

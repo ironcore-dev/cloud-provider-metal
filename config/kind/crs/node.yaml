@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Node
+metadata:
+  name: metal-node-1
+  labels:
+    kubernetes.io/hostname: metal-node-1
+spec:
+  providerID: metal://default/server-1
