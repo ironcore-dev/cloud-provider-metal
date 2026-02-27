@@ -143,12 +143,6 @@ func (o *cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, 
 			log.Fatalf("Failed to start Node reconciler: %v", err)
 		}
 	}()
-	nodeMaintenanceReconciler := NewNodeMaintenanceReconciler(o.targetCluster.GetClient(), o.metalCluster.GetClient(), nodeInformer)
-	go func() {
-		if err := nodeMaintenanceReconciler.Start(ctx); err != nil {
-			log.Fatalf("Failed to start NodeMaintenance reconciler: %v", err)
-		}
-	}()
 
 	if !o.metalCluster.GetCache().WaitForCacheSync(ctx) {
 		log.Fatal("Failed to wait for metal cluster cache to sync")
