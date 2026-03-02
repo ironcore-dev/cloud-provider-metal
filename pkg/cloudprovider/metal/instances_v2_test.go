@@ -4,13 +4,12 @@
 package metal
 
 import (
-	"fmt"
-
 	metalv1alpha1 "github.com/ironcore-dev/metal-operator/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	cloudprovider "k8s.io/cloud-provider"
 	. "sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 )
@@ -106,7 +105,7 @@ var _ = Describe("InstancesV2", func() {
 		instanceMetadata, err := instancesProvider.InstanceMetadata(ctx, node)
 		Expect(err).NotTo(HaveOccurred())
 		Eventually(instanceMetadata).Should(SatisfyAll(
-			HaveField("ProviderID", getProviderID(serverClaim.Namespace, serverClaim.Name)),
+			HaveField("ProviderID", buildProviderID(serverClaim.Namespace, serverClaim.Name)),
 			HaveField("InstanceType", "foo"),
 			HaveField("NodeAddresses", ContainElements(
 				corev1.NodeAddress{
@@ -181,7 +180,7 @@ var _ = Describe("InstancesV2", func() {
 		instanceMetadata, err := instancesProvider.InstanceMetadata(ctx, node)
 		Expect(err).NotTo(HaveOccurred())
 		Eventually(instanceMetadata).Should(SatisfyAll(
-			HaveField("ProviderID", getProviderID(serverClaim.Namespace, serverClaim.Name)),
+			HaveField("ProviderID", buildProviderID(serverClaim.Namespace, serverClaim.Name)),
 			HaveField("NodeAddresses", ContainElements(
 				corev1.NodeAddress{
 					Type:    corev1.NodeInternalIP,
@@ -252,7 +251,7 @@ var _ = Describe("InstancesV2", func() {
 		instanceMetadata, err := instancesProvider.InstanceMetadata(ctx, node)
 		Expect(err).NotTo(HaveOccurred())
 		Eventually(instanceMetadata).Should(SatisfyAll(
-			HaveField("ProviderID", getProviderID(serverClaim.Namespace, serverClaim.Name)),
+			HaveField("ProviderID", buildProviderID(serverClaim.Namespace, serverClaim.Name)),
 		))
 
 		By("Ensuring cluster name label is added to ServerClaim object")
@@ -329,7 +328,7 @@ var _ = Describe("InstancesV2", func() {
 				GenerateName: "test-",
 			},
 			Spec: corev1.NodeSpec{
-				ProviderID: getProviderID(serverClaim.Namespace, serverClaim.Name),
+				ProviderID: buildProviderID(serverClaim.Namespace, serverClaim.Name),
 			},
 		}
 		Expect(k8sClient.Create(ctx, node)).To(Succeed())
@@ -349,7 +348,7 @@ var _ = Describe("InstancesV2", func() {
 		instanceMetadata, err := instancesProvider.InstanceMetadata(ctx, node)
 		Expect(err).NotTo(HaveOccurred())
 		Eventually(instanceMetadata).Should(SatisfyAll(
-			HaveField("ProviderID", getProviderID(serverClaim.Namespace, serverClaim.Name)),
+			HaveField("ProviderID", buildProviderID(serverClaim.Namespace, serverClaim.Name)),
 			HaveField("InstanceType", "foo"),
 			HaveField("NodeAddresses", ContainElements(
 				corev1.NodeAddress{
@@ -373,7 +372,7 @@ var _ = Describe("InstancesV2", func() {
 				Name: "foo",
 			},
 			Spec: corev1.NodeSpec{
-				ProviderID: getProviderID(ns.Name, "bar"),
+				ProviderID: buildProviderID(ns.Name, "bar"),
 			},
 		}
 		Expect(k8sClient.Create(ctx, node)).To(Succeed())
@@ -482,7 +481,7 @@ var _ = Describe("InstancesV2 with configure node addresses false", func() {
 				GenerateName: "test-",
 			},
 			Spec: corev1.NodeSpec{
-				ProviderID: getProviderID(serverClaim.Namespace, serverClaim.Name),
+				ProviderID: buildProviderID(serverClaim.Namespace, serverClaim.Name),
 			},
 		}
 		Expect(k8sClient.Create(ctx, node)).To(Succeed())
@@ -502,7 +501,7 @@ var _ = Describe("InstancesV2 with configure node addresses false", func() {
 		instanceMetadata, err := instancesProvider.InstanceMetadata(ctx, node)
 		Expect(err).NotTo(HaveOccurred())
 		Eventually(instanceMetadata).Should(SatisfyAll(
-			HaveField("ProviderID", getProviderID(serverClaim.Namespace, serverClaim.Name)),
+			HaveField("ProviderID", buildProviderID(serverClaim.Namespace, serverClaim.Name)),
 			HaveField("InstanceType", "foo"),
 			HaveField("NodeAddresses", BeEmpty()),
 			HaveField("Zone", "a"),
@@ -515,6 +514,38 @@ var _ = Describe("InstancesV2 with configure node addresses false", func() {
 	})
 })
 
-func getProviderID(namespace, serverClaimName string) string {
-	return fmt.Sprintf("%s://%s/%s", ProviderName, namespace, serverClaimName)
-}
+var _ = Describe("buildProviderID", func() {
+	DescribeTable("should correctly build provider ID from namespace and name",
+		func(namespace, name, expected string) {
+			result := buildProviderID(namespace, name)
+			Expect(result).To(Equal(expected))
+		},
+		Entry("standard namespace and name", "default", "node-1", "metal://default/node-1"),
+	)
+})
+
+var _ = Describe("getObjectKeyFromProviderID", func() {
+	DescribeTable("should correctly parse provider ID or return an error",
+		func(providerID string, expected types.NamespacedName, expectErr bool) {
+			result, err := getObjectKeyFromProviderID(providerID)
+
+			if expectErr {
+				Expect(err).To(HaveOccurred())
+			} else {
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result).To(Equal(expected))
+			}
+		},
+
+		Entry("valid provider ID", "metal://default/node-1", types.NamespacedName{Namespace: "default", Name: "node-1"}, false),
+		Entry("empty string", "", types.NamespacedName{}, true),
+		Entry("missing scheme", "metal-default/node-1", types.NamespacedName{}, true),
+		Entry("unknown provider", "pancake-provider://default/node-1", types.NamespacedName{}, true),
+		Entry("missing provider before scheme", "://default/node-1", types.NamespacedName{}, true),
+		Entry("missing namespace or name (no slash)", "metal://node-1", types.NamespacedName{}, true),
+		Entry("too many slashes", "metal://default/node-1/extra", types.NamespacedName{}, true),
+		Entry("empty namespace", "metal:///name", types.NamespacedName{}, true),
+		Entry("empty name", "metal://namespace/", types.NamespacedName{}, true),
+		Entry("empty name and namespace", "metal:///", types.NamespacedName{}, true),
+	)
+})

@@ -5,10 +5,8 @@ package metal
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
-	"strings"
 
 	metalv1alpha1 "github.com/ironcore-dev/metal-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
@@ -140,34 +138,12 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) error 
 	return nil
 }
 
-func parseProviderID(providerID string) (types.NamespacedName, error) {
-	if providerID == "" {
-		return types.NamespacedName{}, errors.New("empty providerID")
-	}
-
-	provider, rest, ok := strings.Cut(providerID, "://")
-	if !ok || provider == "" {
-		return types.NamespacedName{}, errors.New("missing scheme")
-	}
-
-	parts := strings.Split(rest, "/")
-	if len(parts) != 2 {
-		return types.NamespacedName{}, errors.New("unexpected count of forward slashes")
-	}
-
-	if parts[0] == "" || parts[1] == "" {
-		return types.NamespacedName{}, errors.New("missing namespace or name")
-	}
-
-	return types.NamespacedName{Namespace: parts[0], Name: parts[1]}, nil
-}
-
 func (r *NodeReconciler) reconcileDelete(ctx context.Context, node *corev1.Node) error {
 	if !controllerutil.ContainsFinalizer(node, nodeMaintenanceFinalizer) {
 		return nil
 	}
 
-	serverClaimKey, err := parseProviderID(node.Spec.ProviderID)
+	serverClaimKey, err := getObjectKeyFromProviderID(node.Spec.ProviderID)
 	if err != nil {
 		klog.Errorf("Node %s has empty/invalid spec.providerID during node deletion: %v. Skipping CR cleanup to unblock node deletion", node.Name, err)
 
@@ -266,7 +242,7 @@ func zeroHostBits(ip net.IP, maskSize int) net.IP {
 }
 
 func (r *NodeReconciler) reconcileMaintenance(ctx context.Context, node *corev1.Node) error {
-	serverClaimKey, err := parseProviderID(node.Spec.ProviderID)
+	serverClaimKey, err := getObjectKeyFromProviderID(node.Spec.ProviderID)
 	if err != nil {
 		klog.Errorf("Node %s has invalid spec.providerID: %v", node.Name, err)
 		return nil

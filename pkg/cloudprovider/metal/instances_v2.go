@@ -7,11 +7,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
 	metalv1alpha1 "github.com/ironcore-dev/metal-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 	capiv1beta1 "sigs.k8s.io/cluster-api/exp/ipam/api/v1beta1"
@@ -120,7 +122,7 @@ func (o *metalInstancesV2) InstanceMetadata(ctx context.Context, node *corev1.No
 
 	providerID := node.Spec.ProviderID
 	if providerID == "" {
-		providerID = fmt.Sprintf("%s://%s/%s", ProviderName, o.metalNamespace, serverClaim.Name)
+		providerID = buildProviderID(o.metalNamespace, serverClaim.Name)
 	}
 
 	instanceType, ok := server.Labels[metalv1alpha1.AnnotationInstanceType]
@@ -286,13 +288,39 @@ func (o *metalInstancesV2) getServerClaimFromProviderID(ctx context.Context, pro
 	return serverClaim, nil
 }
 
-func getObjectKeyFromProviderID(providerID string) (client.ObjectKey, error) {
-	parts := strings.Split(strings.TrimPrefix(providerID, fmt.Sprintf("%s://", ProviderName)), "/")
-	if len(parts) != 2 {
-		return client.ObjectKey{}, fmt.Errorf("invalid format of ProviderID %s", providerID)
+func buildProviderID(namespace, name string) string {
+	u := url.URL{
+		Scheme: ProviderName,
+		Host:   namespace,
+		Path:   name,
 	}
-	return client.ObjectKey{
-		Namespace: parts[0],
-		Name:      parts[1],
-	}, nil
+	return u.String()
+}
+
+func getObjectKeyFromProviderID(providerID string) (client.ObjectKey, error) {
+	if providerID == "" {
+		return types.NamespacedName{}, errors.New("empty providerID")
+	}
+
+	u, err := url.Parse(providerID)
+	if err != nil {
+		return types.NamespacedName{}, fmt.Errorf("parse provider ID %q: %w", providerID, err)
+	}
+
+	if u.Scheme != ProviderName {
+		return types.NamespacedName{}, fmt.Errorf("unsupported provider scheme: %q", u.Scheme)
+	}
+
+	namespace := u.Host
+	name := strings.TrimPrefix(u.Path, "/")
+
+	if namespace == "" || name == "" {
+		return types.NamespacedName{}, errors.New("missing namespace or name in provider ID")
+	}
+
+	if strings.Contains(name, "/") {
+		return types.NamespacedName{}, errors.New("invalid provider ID format: name cannot contain slashes")
+	}
+
+	return types.NamespacedName{Namespace: namespace, Name: name}, nil
 }

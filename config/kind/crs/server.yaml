@@ -2,6 +2,5 @@ apiVersion: metal.ironcore.dev/v1alpha1
 kind: Server
 metadata:
   name: physical-server-1
-  namespace: default
 spec:
   systemUUID: "some-uuid"
