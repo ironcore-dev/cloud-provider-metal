@@ -10,7 +10,6 @@ import (
 	"net"
 	"strings"
 
-	"github.com/google/uuid"
 	metalv1alpha1 "github.com/ironcore-dev/metal-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -18,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlcache "sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -54,13 +54,11 @@ func NewNodeReconciler(targetClient client.Client, metalClient client.Client, no
 func (r *NodeReconciler) Start(ctx context.Context) error {
 	defer r.queue.ShutDown()
 
-	l := ctrl.LoggerFrom(ctx).WithName("node-controller")
-
 	_, err := r.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj any) {
 			node, ok := obj.(*corev1.Node)
 			if !ok {
-				l.Error(nil, "unexpected object type in AddFunc", "type", fmt.Sprintf("%T", obj))
+				klog.Errorf("unexpected object type: %T", obj)
 				return
 			}
 			r.queue.Add(client.ObjectKeyFromObject(node))
@@ -68,7 +66,7 @@ func (r *NodeReconciler) Start(ctx context.Context) error {
 		UpdateFunc: func(oldObj, newObj any) {
 			node, ok := newObj.(*corev1.Node)
 			if !ok {
-				l.Error(nil, "unexpected object type in UpdateFunc", "type", fmt.Sprintf("%T", newObj))
+				klog.Errorf("unexpected object type: %T", newObj)
 				return
 			}
 			r.queue.Add(client.ObjectKeyFromObject(node))
@@ -79,7 +77,7 @@ func (r *NodeReconciler) Start(ctx context.Context) error {
 			}
 			node, ok := obj.(*corev1.Node)
 			if !ok {
-				l.Error(nil, "unexpected object type in DeleteFunc", "type", fmt.Sprintf("%T", obj))
+				klog.Errorf("unexpected object type: %T", obj)
 				return
 			}
 			key := client.ObjectKeyFromObject(node)
@@ -99,11 +97,8 @@ func (r *NodeReconciler) Start(ctx context.Context) error {
 			func() {
 				defer r.queue.Done(key)
 
-				reqL := l.WithValues("namespace", key.Namespace, "node-name", key.Name, "reconcile-id", uuid.NewString())
-				reqCtx := ctrl.LoggerInto(ctx, reqL)
-
-				if err = r.Reconcile(reqCtx, ctrl.Request{NamespacedName: key}); err != nil {
-					reqL.Error(err, "Failed to reconcile Node")
+				if err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key}); err != nil {
+					klog.Errorf("Failed to reconcile Node %s: %v", key, err)
 					r.queue.AddRateLimited(key)
 					return
 				}
@@ -113,45 +108,32 @@ func (r *NodeReconciler) Start(ctx context.Context) error {
 		}
 	}()
 	<-ctx.Done()
-	l.Info("Stopping Node reconciler")
+	klog.Info("Stopping Node reconciler")
 	return nil
 }
 
 func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) error {
-	l := ctrl.LoggerFrom(ctx)
-	l.V(2).Info("Reconciling Node")
+	klog.V(2).Infof("Reconciling Node %s", req.NamespacedName)
 
 	node := &corev1.Node{}
 	if err := r.targetClient.Get(ctx, req.NamespacedName, node); err != nil {
 		if client.IgnoreNotFound(err) != nil {
 			return err
 		}
-		l.V(2).Info("Node not found, skipping reconciliation")
+		klog.V(2).Infof("Node %s not found, skipping reconciliation", req.NamespacedName)
 		return nil
 	}
-
-	if node.Spec.ProviderID == "" {
-		l.Info("Node has empty spec.providerID, skipping reconciliation")
-		return nil
-	}
-
-	serverClaimKey, err := parseProviderID(node.Spec.ProviderID)
-	if err != nil {
-		return fmt.Errorf("unable to parse provider ID: %w", err)
-	}
-
-	l = l.WithValues("server-claim-name", serverClaimKey.Name, "server-claim-namespace", serverClaimKey.Namespace)
 
 	if !node.DeletionTimestamp.IsZero() {
-		l.Info("Node is deleting, reconciling delete flow")
-		return r.reconcileDelete(ctx, node, serverClaimKey)
+		klog.V(2).Infof("Node %s is deleting, reconciling delete flow", req.NamespacedName)
+		return r.reconcileDelete(ctx, node)
 	}
 
-	if err = r.reconcilePodCIDR(ctx, node); err != nil {
+	if err := r.reconcilePodCIDR(ctx, node); err != nil {
 		return fmt.Errorf("unable to reconcile PodCIDR: %w", err)
 	}
 
-	if err = r.reconcileMaintenance(ctx, node, serverClaimKey); err != nil {
+	if err := r.reconcileMaintenance(ctx, node); err != nil {
 		return fmt.Errorf("unable to reconcile maintenance: %w", err)
 	}
 
@@ -180,12 +162,26 @@ func parseProviderID(providerID string) (types.NamespacedName, error) {
 	return types.NamespacedName{Namespace: parts[0], Name: parts[1]}, nil
 }
 
-func (r *NodeReconciler) reconcileDelete(ctx context.Context, node *corev1.Node, serverClaimKey types.NamespacedName) error {
+func (r *NodeReconciler) reconcileDelete(ctx context.Context, node *corev1.Node) error {
 	if !controllerutil.ContainsFinalizer(node, nodeMaintenanceFinalizer) {
 		return nil
 	}
 
-	if err := r.ensureServerMaintenanceNotExists(ctx, serverClaimKey); err != nil {
+	serverClaimKey, err := parseProviderID(node.Spec.ProviderID)
+	if err != nil {
+		klog.Errorf("Node %s has empty/invalid spec.providerID during node deletion: %v. Skipping CR cleanup to unblock node deletion", node.Name, err)
+
+		base := node.DeepCopy()
+		if removed := controllerutil.RemoveFinalizer(node, nodeMaintenanceFinalizer); removed {
+			if patchErr := r.targetClient.Patch(ctx, node, client.MergeFrom(base)); patchErr != nil {
+				return fmt.Errorf("unable to remove finalizer: %w", patchErr)
+			}
+		}
+
+		return nil
+	}
+
+	if err = r.ensureServerMaintenanceNotExists(ctx, serverClaimKey); err != nil {
 		return fmt.Errorf("unable to cleanup ServerMaintenance: %w", err)
 	}
 
@@ -200,11 +196,15 @@ func (r *NodeReconciler) reconcileDelete(ctx context.Context, node *corev1.Node,
 }
 
 func (r *NodeReconciler) ensureServerMaintenanceNotExists(ctx context.Context, key types.NamespacedName) error {
-	maintenance := &metalv1alpha1.ServerMaintenance{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      key.Name,
-			Namespace: key.Namespace,
-		},
+
+	maintenance := &metalv1alpha1.ServerMaintenance{}
+	if err := r.metalClient.Get(ctx, key, maintenance); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+
+	if maintenance.Labels == nil || maintenance.Labels[labelKeyManagedBy] != cloudProviderMetalName {
+		klog.Infof("ServerMaintenance %s exists but is not managed by CCM, skipping deletion", key)
+		return nil
 	}
 
 	if err := r.metalClient.Delete(ctx, maintenance); err != nil {
@@ -215,15 +215,13 @@ func (r *NodeReconciler) ensureServerMaintenanceNotExists(ctx context.Context, k
 }
 
 func (r *NodeReconciler) reconcilePodCIDR(ctx context.Context, node *corev1.Node) error {
-	l := ctrl.LoggerFrom(ctx)
-
 	if PodPrefixSize <= 0 {
 		// <= 0 disables automatic assignment of pod CIDR.
 		return nil
 	}
 
 	if node.Spec.PodCIDR != "" {
-		l.Info("PodCIDR is already populated; patch was not done", "PodCIDR", node.Spec.PodCIDR)
+		klog.InfoS("PodCIDR is already populated; patch was not done", "Node", node.Name, "PodCIDR", node.Spec.PodCIDR)
 		return nil
 	}
 
@@ -248,13 +246,13 @@ func (r *NodeReconciler) reconcilePodCIDR(ctx context.Context, node *corev1.Node
 				return fmt.Errorf("failed to patch Node's PodCIDR with error %w", err)
 			}
 
-			l.Info("Patched Node's PodCIDR and PodCIDRs", "PodCIDR", podCIDR)
+			klog.InfoS("Patched Node's PodCIDR and PodCIDRs", "Node", node.Name, "PodCIDR", podCIDR)
 
 			return nil
 		}
 	}
 
-	l.Info("Node does not have a NodeInternalIP, not setting podCIDR")
+	klog.Info("Node does not have a NodeInternalIP, not setting podCIDR")
 	return nil
 }
 
@@ -268,20 +266,23 @@ func zeroHostBits(ip net.IP, maskSize int) net.IP {
 	return ip.Mask(mask)
 }
 
-func (r *NodeReconciler) reconcileMaintenance(ctx context.Context, node *corev1.Node, serverClaimKey types.NamespacedName) error {
-	l := ctrl.LoggerFrom(ctx)
+func (r *NodeReconciler) reconcileMaintenance(ctx context.Context, node *corev1.Node) error {
+	serverClaimKey, err := parseProviderID(node.Spec.ProviderID)
+	if err != nil {
+		return fmt.Errorf("unable to parse provider ID: %w", err)
+	}
 
 	serverClaim := &metalv1alpha1.ServerClaim{}
-	if err := r.metalClient.Get(ctx, serverClaimKey, serverClaim); err != nil {
+	if err = r.metalClient.Get(ctx, serverClaimKey, serverClaim); err != nil {
 		if apierrors.IsNotFound(err) {
-			l.Info("ServerClaim not found, skipping reconciliation")
+			klog.V(2).Infof("ServerClaim %s not found, skipping reconciliation", serverClaimKey)
 			return nil
 		}
 		return fmt.Errorf("unable to get ServerClaim: %w", err)
 	}
 
 	if serverClaim.Spec.ServerRef == nil {
-		l.Info("ServerClaim has empty ServerRef, skipping maintenance logic")
+		klog.V(2).Infof("ServerClaim %s has empty ServerRef, skipping maintenance logic", serverClaimKey)
 		return nil
 	}
 

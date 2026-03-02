@@ -207,6 +207,7 @@ var _ = Describe("NodeReconciler", func() {
 			Expect(maintenanceCR.Spec.Priority).To(Equal(serverMaintenancePriority))
 			Expect(maintenanceCR.Spec.ServerRef).NotTo(BeNil())
 			Expect(maintenanceCR.Spec.ServerRef.Name).To(Equal(serverClaim.Spec.ServerRef.Name))
+			Expect(maintenanceCR.Labels).To(HaveKeyWithValue(labelKeyManagedBy, cloudProviderMetalName))
 
 			By("Verifying the finalizer is added to the Node")
 			Eventually(Object(node)).Should(HaveField("Finalizers", ContainElement(nodeMaintenanceFinalizer)))
@@ -220,7 +221,6 @@ var _ = Describe("NodeReconciler", func() {
 					Labels: map[string]string{
 						"test-marker": "do-not-overwrite",
 					},
-					Finalizers: []string{nodeMaintenanceFinalizer},
 				},
 				Spec: metalv1alpha1.ServerMaintenanceSpec{
 					Policy:   metalv1alpha1.ServerMaintenancePolicyOwnerApproval,
@@ -249,6 +249,7 @@ var _ = Describe("NodeReconciler", func() {
 			}).Should(Succeed())
 
 			By("Verifying the finalizer is present in the Node")
+			Eventually(Object(node)).Should(HaveField("Finalizers", ContainElement(nodeMaintenanceFinalizer)))
 			Consistently(Object(node)).Should(HaveField("Finalizers", ContainElement(nodeMaintenanceFinalizer)))
 		})
 
@@ -346,6 +347,43 @@ var _ = Describe("NodeReconciler", func() {
 				g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
 			}).Should(Succeed())
 		})
+	})
+
+	It("should NOT delete the ServerMaintenance CR if it is not managed by the controller", func(ctx SpecContext) {
+		const managedBy = "some-other-controller-or-admin"
+		unownedCR := &metalv1alpha1.ServerMaintenance{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      serverClaim.Name,
+				Namespace: serverClaim.Namespace,
+				Labels: map[string]string{
+					labelKeyManagedBy: managedBy,
+				},
+			},
+			Spec: metalv1alpha1.ServerMaintenanceSpec{
+				Policy:   metalv1alpha1.ServerMaintenancePolicyOwnerApproval,
+				Priority: serverMaintenancePriority,
+				ServerRef: &corev1.LocalObjectReference{
+					Name: serverClaim.Spec.ServerRef.Name,
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, unownedCR)).To(Succeed())
+		DeferCleanup(k8sClient.Delete, unownedCR)
+
+		originalNode := node.DeepCopy()
+		if node.Annotations == nil {
+			node.Annotations = make(map[string]string)
+		}
+		node.Annotations["dummy-trigger"] = "trigger-reconcile"
+		Expect(k8sClient.Patch(ctx, node, client.MergeFrom(originalNode))).To(Succeed())
+
+		By("Ensuring the unowned ServerMaintenance CR remains untouched")
+		Consistently(func(g Gomega) {
+			checkCR := &metalv1alpha1.ServerMaintenance{}
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(unownedCR), checkCR)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(checkCR.Labels).To(HaveKeyWithValue(labelKeyManagedBy, managedBy))
+		}).Should(Succeed())
 	})
 
 	Context("Maintenance Approval Handshake", func() {

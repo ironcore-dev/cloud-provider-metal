@@ -80,8 +80,7 @@ export-kubeconfig:
 
 .PHONY: tilt-up
 tilt-up: kind-setup export-kubeconfig
-	KUBECONFIG=./config/kind/mgmt-kubeconfig:./config/kind/worker-kubeconfig
-	tilt up
+	KUBECONFIG=./config/kind/mgmt-kubeconfig:./config/kind/worker-kubeconfig tilt up
 
 ##@ Build
 

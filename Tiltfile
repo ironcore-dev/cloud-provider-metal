@@ -12,9 +12,13 @@ def mgmt_kubectl(args):
 def worker_kubectl(args):
     return local('kubectl --kubeconfig=' + worker_kubeconfig + ' --context=' + worker_ctx + ' ' + args)
 
-mgmt_kubectl('apply -f https://raw.githubusercontent.com/ironcore-dev/metal-operator/main/config/crd/bases/metal.ironcore.dev_serverclaims.yaml')
-mgmt_kubectl('apply -f https://raw.githubusercontent.com/ironcore-dev/metal-operator/main/config/crd/bases/metal.ironcore.dev_servermaintenances.yaml')
-mgmt_kubectl('apply -f https://raw.githubusercontent.com/ironcore-dev/metal-operator/main/config/crd/bases/metal.ironcore.dev_servers.yaml')
+METAL_OPERATOR_REF = "v0.3.0"
+mgmt_kubectl('apply -f https://raw.githubusercontent.com/ironcore-dev/metal-operator/' + METAL_OPERATOR_REF + '/config/crd/bases/metal.ironcore.dev_serverclaims.yaml')
+mgmt_kubectl('apply -f https://raw.githubusercontent.com/ironcore-dev/metal-operator/' + METAL_OPERATOR_REF + '/config/crd/bases/metal.ironcore.dev_servermaintenances.yaml')
+mgmt_kubectl('apply -f https://raw.githubusercontent.com/ironcore-dev/metal-operator/' + METAL_OPERATOR_REF + '/config/crd/bases/metal.ironcore.dev_servers.yaml')
+mgmt_kubectl('wait --for=condition=Established --timeout=60s crd/serverclaims.metal.ironcore.dev')
+mgmt_kubectl('wait --for=condition=Established --timeout=60s crd/servermaintenances.metal.ironcore.dev')
+mgmt_kubectl('wait --for=condition=Established --timeout=60s crd/servers.metal.ironcore.dev')
 mgmt_kubectl('apply -f config/kind/crs/server.yaml')
 mgmt_kubectl('apply -f config/kind/crs/serverclaim.yaml')
 

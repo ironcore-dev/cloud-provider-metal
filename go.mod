@@ -3,7 +3,6 @@ module github.com/ironcore-dev/cloud-provider-metal
 go 1.25.6
 
 require (
-	github.com/google/uuid v1.6.0
 	github.com/ironcore-dev/controller-utils v0.11.0
 	github.com/ironcore-dev/metal-operator v0.3.1-0.20260220142141-5dabaca4f7d7
 	github.com/onsi/ginkgo/v2 v2.28.1
@@ -65,6 +64,7 @@ require (
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/pprof v0.0.0-20260115054156-294ebfa9ad83 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
