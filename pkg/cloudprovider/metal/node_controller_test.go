@@ -72,7 +72,9 @@ var _ = Describe("NodeReconciler", func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, serverClaim)).To(Succeed())
-		DeferCleanup(k8sClient.Delete, serverClaim)
+		DeferCleanup(func(ctx SpecContext) error {
+			return client.IgnoreNotFound(k8sClient.Delete(ctx, serverClaim))
+		})
 
 		By("Creating a Node object with a provider ID referencing the machine")
 		node = &corev1.Node{
@@ -387,43 +389,88 @@ var _ = Describe("NodeReconciler", func() {
 				g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
 			}).Should(Succeed())
 		})
-	})
 
-	It("should NOT delete the ServerMaintenance CR if it is not managed by the controller", func(ctx SpecContext) {
-		const managedBy = "some-other-controller-or-admin"
-		unownedCR := &metalv1alpha1.ServerMaintenance{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      serverClaim.Name,
+		It("should NOT delete the ServerMaintenance CR if it is not managed by the controller", func(ctx SpecContext) {
+			const managedBy = "some-other-controller-or-admin"
+			unownedCR := &metalv1alpha1.ServerMaintenance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      serverClaim.Name,
+					Namespace: serverClaim.Namespace,
+					Labels: map[string]string{
+						labelKeyManagedBy: managedBy,
+					},
+				},
+				Spec: metalv1alpha1.ServerMaintenanceSpec{
+					Policy:   metalv1alpha1.ServerMaintenancePolicyOwnerApproval,
+					Priority: serverMaintenancePriority,
+					ServerRef: &corev1.LocalObjectReference{
+						Name: serverClaim.Spec.ServerRef.Name,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, unownedCR)).To(Succeed())
+			DeferCleanup(k8sClient.Delete, unownedCR)
+
+			originalNode := node.DeepCopy()
+			if node.Annotations == nil {
+				node.Annotations = make(map[string]string)
+			}
+			node.Annotations["dummy-trigger"] = "trigger-reconcile"
+			Expect(k8sClient.Patch(ctx, node, client.MergeFrom(originalNode))).To(Succeed())
+
+			By("Ensuring the unowned ServerMaintenance CR remains untouched")
+			Consistently(func(g Gomega) {
+				checkCR := &metalv1alpha1.ServerMaintenance{}
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(unownedCR), checkCR)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(checkCR.Labels).To(HaveKeyWithValue(labelKeyManagedBy, managedBy))
+			}).Should(Succeed())
+		})
+
+		It("should clean up ServerMaintenance and finalizer even if ServerClaim is deleted", func(ctx SpecContext) {
+			By("1. Triggering maintenance to create CR and add finalizer")
+			originalNode := node.DeepCopy()
+			if node.Labels == nil {
+				node.Labels = make(map[string]string)
+			}
+			node.Labels[metalv1alpha1.ServerMaintenanceRequestedLabelKey] = TrueStr
+			Expect(k8sClient.Patch(ctx, node, client.MergeFrom(originalNode))).To(Succeed())
+
+			maintenanceKey := client.ObjectKey{
 				Namespace: serverClaim.Namespace,
-				Labels: map[string]string{
-					labelKeyManagedBy: managedBy,
-				},
-			},
-			Spec: metalv1alpha1.ServerMaintenanceSpec{
-				Policy:   metalv1alpha1.ServerMaintenancePolicyOwnerApproval,
-				Priority: serverMaintenancePriority,
-				ServerRef: &corev1.LocalObjectReference{
-					Name: serverClaim.Spec.ServerRef.Name,
-				},
-			},
-		}
-		Expect(k8sClient.Create(ctx, unownedCR)).To(Succeed())
-		DeferCleanup(k8sClient.Delete, unownedCR)
+				Name:      serverClaim.Name,
+			}
+			maintenanceCR := &metalv1alpha1.ServerMaintenance{}
 
-		originalNode := node.DeepCopy()
-		if node.Annotations == nil {
-			node.Annotations = make(map[string]string)
-		}
-		node.Annotations["dummy-trigger"] = "trigger-reconcile"
-		Expect(k8sClient.Patch(ctx, node, client.MergeFrom(originalNode))).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, maintenanceKey, maintenanceCR)
+				g.Expect(err).NotTo(HaveOccurred())
+			}).Should(Succeed())
+			Eventually(Object(node)).Should(HaveField("Finalizers", ContainElement(nodeMaintenanceFinalizer)))
 
-		By("Ensuring the unowned ServerMaintenance CR remains untouched")
-		Consistently(func(g Gomega) {
-			checkCR := &metalv1alpha1.ServerMaintenance{}
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(unownedCR), checkCR)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(checkCR.Labels).To(HaveKeyWithValue(labelKeyManagedBy, managedBy))
-		}).Should(Succeed())
+			By("2. Deleting the ServerClaim to simulate the edge case")
+			Expect(k8sClient.Delete(ctx, serverClaim)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(serverClaim), &metalv1alpha1.ServerClaim{})
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
+			}).Should(Succeed())
+
+			By("3. Removing the maintenance-requested label from the Node")
+			originalNodeWithLabel := node.DeepCopy()
+			delete(node.Labels, metalv1alpha1.ServerMaintenanceRequestedLabelKey)
+			Expect(k8sClient.Patch(ctx, node, client.MergeFrom(originalNodeWithLabel))).To(Succeed())
+
+			By("4. Verifying the ServerMaintenance CR is deleted despite missing ServerClaim")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, maintenanceKey, maintenanceCR)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
+			}).Should(Succeed())
+
+			By("5. Verifying the finalizer is removed from the Node")
+			Eventually(Object(node)).ShouldNot(HaveField("Finalizers", ContainElement(nodeMaintenanceFinalizer)))
+		})
 	})
 
 	Context("Maintenance Approval Handshake", func() {

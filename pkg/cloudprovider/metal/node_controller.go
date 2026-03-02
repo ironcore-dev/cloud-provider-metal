@@ -272,10 +272,26 @@ func (r *NodeReconciler) reconcileMaintenance(ctx context.Context, node *corev1.
 		return nil
 	}
 
+	maintenanceKey := serverClaimKey
+	maintenanceRequested := node.Labels[metalv1alpha1.ServerMaintenanceRequestedLabelKey] == TrueStr
+
+	if !maintenanceRequested {
+		if err = r.ensureServerMaintenanceNotExists(ctx, maintenanceKey); err != nil {
+			return fmt.Errorf("unable to ensure ServerMaintenance CR not exists: %w", err)
+		}
+
+		base := node.DeepCopy()
+		if removed := controllerutil.RemoveFinalizer(node, nodeMaintenanceFinalizer); removed {
+			if err = r.targetClient.Patch(ctx, node, client.MergeFrom(base)); err != nil {
+				return fmt.Errorf("unable to remove finalizer: %w", err)
+			}
+		}
+	}
+
 	serverClaim := &metalv1alpha1.ServerClaim{}
 	if err = r.metalClient.Get(ctx, serverClaimKey, serverClaim); err != nil {
 		if apierrors.IsNotFound(err) {
-			klog.V(2).Infof("ServerClaim %s not found, skipping reconciliation", serverClaimKey)
+			klog.V(2).Infof("ServerClaim %s not found, skipping maintenance creation and handshake", serverClaimKey)
 			return nil
 		}
 		return fmt.Errorf("unable to get ServerClaim: %w", err)
@@ -285,9 +301,6 @@ func (r *NodeReconciler) reconcileMaintenance(ctx context.Context, node *corev1.
 		klog.V(2).Infof("ServerClaim %s has empty ServerRef, skipping maintenance logic", serverClaimKey)
 		return nil
 	}
-
-	maintenanceKey := serverClaimKey
-	maintenanceRequested := node.Labels[metalv1alpha1.ServerMaintenanceRequestedLabelKey] == TrueStr
 
 	if maintenanceRequested {
 		base := node.DeepCopy()
@@ -302,18 +315,6 @@ func (r *NodeReconciler) reconcileMaintenance(ctx context.Context, node *corev1.
 		if err = r.ensureServerMaintenanceExists(ctx, maintenanceKey, serverName); err != nil {
 			return fmt.Errorf("unable to ensure ServerMaintenance CR exists: %w", err)
 		}
-
-	} else {
-		if err = r.ensureServerMaintenanceNotExists(ctx, maintenanceKey); err != nil {
-			return fmt.Errorf("unable to ensure ServerMaintenance CR not exists: %w", err)
-		}
-
-		base := node.DeepCopy()
-		if removed := controllerutil.RemoveFinalizer(node, nodeMaintenanceFinalizer); removed {
-			if err := r.targetClient.Patch(ctx, node, client.MergeFrom(base)); err != nil {
-				return fmt.Errorf("unable to remove finalizer: %w", err)
-			}
-		}
 	}
 
 	maintenanceNeeded := serverClaim.Labels[metalv1alpha1.ServerMaintenanceNeededLabelKey] == TrueStr
@@ -323,7 +324,7 @@ func (r *NodeReconciler) reconcileMaintenance(ctx context.Context, node *corev1.
 	hasApproval := serverClaim.Labels[metalv1alpha1.ServerMaintenanceApprovalKey] == TrueStr
 
 	if shouldHaveApproval != hasApproval {
-		if err := r.syncServerClaimApproval(ctx, serverClaim, shouldHaveApproval); err != nil {
+		if err = r.syncServerClaimApproval(ctx, serverClaim, shouldHaveApproval); err != nil {
 			return fmt.Errorf("unable to sync ServerClaim approval: %w", err)
 		}
 	}
