@@ -196,7 +196,6 @@ func (r *NodeReconciler) reconcileDelete(ctx context.Context, node *corev1.Node)
 }
 
 func (r *NodeReconciler) ensureServerMaintenanceNotExists(ctx context.Context, key types.NamespacedName) error {
-
 	maintenance := &metalv1alpha1.ServerMaintenance{}
 	if err := r.metalClient.Get(ctx, key, maintenance); err != nil {
 		return client.IgnoreNotFound(err)
@@ -269,7 +268,8 @@ func zeroHostBits(ip net.IP, maskSize int) net.IP {
 func (r *NodeReconciler) reconcileMaintenance(ctx context.Context, node *corev1.Node) error {
 	serverClaimKey, err := parseProviderID(node.Spec.ProviderID)
 	if err != nil {
-		return fmt.Errorf("unable to parse provider ID: %w", err)
+		klog.Errorf("Node %s has invalid spec.providerID: %v", node.Name, err)
+		return nil
 	}
 
 	serverClaim := &metalv1alpha1.ServerClaim{}
@@ -299,12 +299,12 @@ func (r *NodeReconciler) reconcileMaintenance(ctx context.Context, node *corev1.
 
 		serverName := serverClaim.Spec.ServerRef.Name
 
-		if err := r.ensureServerMaintenanceExists(ctx, maintenanceKey, serverName); err != nil {
+		if err = r.ensureServerMaintenanceExists(ctx, maintenanceKey, serverName); err != nil {
 			return fmt.Errorf("unable to ensure ServerMaintenance CR exists: %w", err)
 		}
 
 	} else {
-		if err := r.ensureServerMaintenanceNotExists(ctx, maintenanceKey); err != nil {
+		if err = r.ensureServerMaintenanceNotExists(ctx, maintenanceKey); err != nil {
 			return fmt.Errorf("unable to ensure ServerMaintenance CR not exists: %w", err)
 		}
 
@@ -340,6 +340,12 @@ func (r *NodeReconciler) ensureServerMaintenanceExists(ctx context.Context, key 
 	}
 
 	_, err := controllerutil.CreateOrPatch(ctx, r.metalClient, maintenance, func() error {
+
+		if !maintenance.CreationTimestamp.IsZero() {
+			if maintenance.Labels[labelKeyManagedBy] != cloudProviderMetalName {
+				return nil
+			}
+		}
 
 		maintenance.Spec.Policy = metalv1alpha1.ServerMaintenancePolicyOwnerApproval
 		maintenance.Spec.Priority = serverMaintenancePriority

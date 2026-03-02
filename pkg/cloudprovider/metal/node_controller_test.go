@@ -253,6 +253,46 @@ var _ = Describe("NodeReconciler", func() {
 			Consistently(Object(node)).Should(HaveField("Finalizers", ContainElement(nodeMaintenanceFinalizer)))
 		})
 
+		It("should NOT overwrite an existing ServerMaintenance CR if it is not managed by the controller", func(ctx SpecContext) {
+			unownedCR := &metalv1alpha1.ServerMaintenance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      serverClaim.Name,
+					Namespace: serverClaim.Namespace,
+					Labels: map[string]string{
+						labelKeyManagedBy: "admin-user",
+						"custom-marker":   "do-not-touch",
+					},
+				},
+				Spec: metalv1alpha1.ServerMaintenanceSpec{
+					Policy:   metalv1alpha1.ServerMaintenancePolicyOwnerApproval,
+					Priority: 999,
+					ServerRef: &corev1.LocalObjectReference{
+						Name: serverClaim.Spec.ServerRef.Name,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, unownedCR)).To(Succeed())
+			DeferCleanup(k8sClient.Delete, unownedCR)
+
+			originalNode := node.DeepCopy()
+			if node.Labels == nil {
+				node.Labels = make(map[string]string)
+			}
+			node.Labels[metalv1alpha1.ServerMaintenanceRequestedLabelKey] = TrueStr
+			Expect(k8sClient.Patch(ctx, node, client.MergeFrom(originalNode))).To(Succeed())
+
+			Consistently(func(g Gomega) {
+				checkCR := &metalv1alpha1.ServerMaintenance{}
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(unownedCR), checkCR)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(checkCR.Spec.Priority).To(Equal(int32(999)))
+				g.Expect(checkCR.Labels).To(HaveKeyWithValue(labelKeyManagedBy, "admin-user"))
+				g.Expect(checkCR.Labels).To(HaveKeyWithValue("custom-marker", "do-not-touch"))
+			}).Should(Succeed())
+
+			Eventually(Object(node)).Should(HaveField("Finalizers", ContainElement(nodeMaintenanceFinalizer)))
+		})
+
 		It("should delete the ServerMaintenance CR when the maintenance-requested label is removed", func(ctx SpecContext) {
 			originalNode := node.DeepCopy()
 			if node.Labels == nil {
