@@ -12,7 +12,7 @@ def mgmt_kubectl(args):
 def worker_kubectl(args):
     return local('kubectl --kubeconfig=' + worker_kubeconfig + ' --context=' + worker_ctx + ' ' + args)
 
-METAL_OPERATOR_REF = "main" #TODO: update to the tag after new metal-operator release
+METAL_OPERATOR_REF = "v0.4.0"
 mgmt_kubectl('apply -f https://raw.githubusercontent.com/ironcore-dev/metal-operator/' + METAL_OPERATOR_REF + '/config/crd/bases/metal.ironcore.dev_serverclaims.yaml')
 mgmt_kubectl('apply -f https://raw.githubusercontent.com/ironcore-dev/metal-operator/' + METAL_OPERATOR_REF + '/config/crd/bases/metal.ironcore.dev_servermaintenances.yaml')
 mgmt_kubectl('apply -f https://raw.githubusercontent.com/ironcore-dev/metal-operator/' + METAL_OPERATOR_REF + '/config/crd/bases/metal.ironcore.dev_servers.yaml')
