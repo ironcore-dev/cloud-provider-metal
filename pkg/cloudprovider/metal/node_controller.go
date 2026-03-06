@@ -338,7 +338,13 @@ func (r *NodeReconciler) ensureServerMaintenanceExists(ctx context.Context, key 
 		return nil
 	})
 
-	return err
+	// Ignore AlreadyExists errors caused by informer cache delays.
+	// Adding a finalizer to the Node earlier in the Reconcile loop triggers an
+	// immediate re-reconciliation. This second run often happens so fast that the
+	// local cache hasn't received the newly created ServerMaintenance CR yet.
+	// As a result, CreateOrPatch gets a cache miss (NotFound) and attempts to
+	// Create the CR again, which the API server correctly rejects with AlreadyExists.
+	return client.IgnoreAlreadyExists(err)
 }
 
 func (r *NodeReconciler) syncServerClaimApproval(ctx context.Context, serverClaim *metalv1alpha1.ServerClaim, shouldHaveApproval bool) error {
