@@ -13,24 +13,36 @@ linters:
     - govet
     - ineffassign
     - lll
+    - modernize
     - misspell
     - nakedret
     - prealloc
+    - revive
     - staticcheck
     - unconvert
     - unparam
     - unused
+    - logcheck
+  settings:
+    custom:
+      logcheck:
+        type: "module"
+        description: Checks Go logging calls for Kubernetes logging conventions.
+    revive:
+      rules:
+        - name: comment-spacings
+        - name: import-shadowing
+    modernize:
+      disable:
+        - omitzero
   exclusions:
     generated: lax
     rules:
       - linters:
           - lll
           - dupl
-        path: cmd/*
-      - linters:
-          - lll
-          - dupl
-        path: pkg/*
+          - goconst
+        path: pkg/cloudprovider/metal/*
     paths:
       - third_party$
       - builtin$

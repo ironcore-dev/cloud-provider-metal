@@ -7,6 +7,7 @@ SPDX-PackageDownloadLocation = "https://github.com/ironcore-dev/cloud-provider-m
 path = [
     ".github/**",
     ".gitignore",
+    ".custom-gcl.yml",
     ".golangci.yml",
     ".dockerignore",
     "CODE_OF_CONDUCT.md",

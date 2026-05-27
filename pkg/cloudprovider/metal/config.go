@@ -51,7 +51,7 @@ func AddExtraFlags(fs *pflag.FlagSet) {
 }
 
 func LoadCloudProviderConfig(f io.Reader) (*CloudProviderConfig, error) {
-	klog.V(2).Infof("Reading configuration for cloud provider: %s", ProviderName)
+	klog.V(2).InfoS("Loading cloud provider config", "provider", ProviderName)
 	configBytes, err := io.ReadAll(f)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to read in config")
@@ -82,7 +82,7 @@ func LoadCloudProviderConfig(f io.Reader) (*CloudProviderConfig, error) {
 		return nil, fmt.Errorf("got a empty namespace from metal kubeconfig")
 	}
 
-	klog.V(2).Infof("Successfully read configuration for cloud provider: %s", ProviderName)
+	klog.V(2).InfoS("Successfully loaded configuration", "provider", ProviderName)
 	return cloudProviderConfig, nil
 }
 

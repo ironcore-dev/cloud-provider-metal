@@ -42,7 +42,7 @@ func (r *ServerClaimReconciler) Start(ctx context.Context) error {
 		AddFunc: func(obj any) {
 			claim, ok := obj.(*metalv1alpha1.ServerClaim)
 			if !ok {
-				klog.Errorf("unexpected object type: %T", obj)
+				klog.ErrorS(nil, "unexpected object type", "type", fmt.Sprintf("%T", obj))
 				return
 			}
 			r.queue.Add(client.ObjectKeyFromObject(claim))
@@ -50,7 +50,7 @@ func (r *ServerClaimReconciler) Start(ctx context.Context) error {
 		UpdateFunc: func(oldObj, newObj any) {
 			claim, ok := newObj.(*metalv1alpha1.ServerClaim)
 			if !ok {
-				klog.Errorf("unexpected object type: %T", newObj)
+				klog.ErrorS(nil, "unexpected object type", "type", fmt.Sprintf("%T", newObj))
 				return
 			}
 			r.queue.Add(client.ObjectKeyFromObject(claim))
@@ -61,7 +61,7 @@ func (r *ServerClaimReconciler) Start(ctx context.Context) error {
 			}
 			claim, ok := obj.(*metalv1alpha1.ServerClaim)
 			if !ok {
-				klog.Errorf("unexpected object type: %T", obj)
+				klog.ErrorS(nil, "unexpected object type", "type", fmt.Sprintf("%T", obj))
 				return
 			}
 			key := client.ObjectKeyFromObject(claim)
@@ -80,26 +80,26 @@ func (r *ServerClaimReconciler) Start(ctx context.Context) error {
 				return
 			}
 			if err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key}); err != nil {
-				klog.Errorf("Failed to reconcile ServerClaim %s: %v", key, err)
+				klog.ErrorS(err, "Failed to reconcile ServerClaim", "serverclaim", key)
 				r.queue.AddRateLimited(key)
 			}
 			r.queue.Done(key)
 		}
 	}()
 	<-ctx.Done()
-	klog.Info("Stopping ServerClaim reconciler")
+	klog.InfoS("Stopping ServerClaim reconciler")
 	return nil
 }
 
 func (r *ServerClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request) error {
-	klog.V(2).Infof("Reconciling ServerClaim %s", req.NamespacedName)
+	klog.V(2).InfoS("Reconciling ServerClaim", "serverclaim", req.NamespacedName)
 
 	serverClaim := &metalv1alpha1.ServerClaim{}
 	if err := r.metalClient.Get(ctx, req.NamespacedName, serverClaim); err != nil {
 		if client.IgnoreNotFound(err) != nil {
 			return err
 		}
-		klog.V(2).Infof("ServerClaim %s not found, skipping reconciliation", req.NamespacedName)
+		klog.V(2).InfoS("ServerClaim not found, skipping reconciliation", "serverclaim", req.NamespacedName)
 		return nil
 	}
 
@@ -110,7 +110,7 @@ func (r *ServerClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return fmt.Errorf("failed to list nodes with providerID %s: %w", providerID, err)
 	}
 	if len(nodes.Items) == 0 {
-		klog.V(2).Infof("No nodes found with providerID %s", providerID)
+		klog.V(2).InfoS("No nodes found", "providerID", providerID)
 		return nil
 	}
 	if len(nodes.Items) > 1 {

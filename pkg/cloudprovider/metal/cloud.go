@@ -70,7 +70,7 @@ type cloud struct {
 }
 
 func (o *cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, stop <-chan struct{}) {
-	klog.V(2).Infof("Initializing cloud provider: %s", ProviderName)
+	klog.V(2).InfoS("Initializing cloud provider", "provider", ProviderName)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		defer cancel()
@@ -150,7 +150,7 @@ func (o *cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, 
 	if !o.targetCluster.GetCache().WaitForCacheSync(ctx) {
 		log.Fatal("Failed to wait for target cluster cache to sync")
 	}
-	klog.V(2).Infof("Successfully initialized cloud provider: %s", ProviderName)
+	klog.V(2).InfoS("Successfully initialized cloud provider", "provider", ProviderName)
 }
 
 func (o *cloud) LoadBalancer() (cloudprovider.LoadBalancer, bool) {

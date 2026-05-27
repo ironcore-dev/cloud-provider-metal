@@ -31,15 +31,21 @@ func main() {
 
 	ccmOptions, err := options.NewCloudControllerManagerOptions()
 	if err != nil {
-		klog.Fatalf("unable to initialize command options: %v", err)
+		klog.ErrorS(err, "unable to initialize command options")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
 	fss := cliflag.NamedFlagSets{}
 	metal.AddExtraFlags(fss.FlagSet("Metal Client"))
 
-	command := app.NewCloudControllerManagerCommand(ccmOptions, cloudInitializer, app.DefaultInitFuncConstructors, names.CCMControllerAliases(), fss, wait.NeverStop)
+	command := app.NewCloudControllerManagerCommand(ccmOptions,
+		cloudInitializer,
+		app.DefaultInitFuncConstructors,
+		names.CCMControllerAliases(),
+		fss,
+		wait.NeverStop)
 
-	klog.V(1).Infof("metal-cloud-controller-manager version: %s", version.Version)
+	klog.V(1).InfoS("metal-cloud-controller-manager version", "version", version.Version)
 
 	if err := command.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -58,17 +64,22 @@ func cloudInitializer(config *cloudcontrollerconfig.CompletedConfig) cloudprovid
 	// initialize cloud provider with the cloud provider name and config file provided
 	cloud, err := cloudprovider.InitCloudProvider(providerName, cloudConfig.CloudConfigFile)
 	if err != nil {
-		klog.Fatalf("Cloud provider could not be initialized: %v", err)
+		klog.ErrorS(err, "cloud provider could not be initialized")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 	if cloud == nil {
-		klog.Fatalf("Cloud provider is nil")
+		klog.ErrorS(nil, "cloud provider is nil")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
 	if cloud != nil && !cloud.HasClusterID() {
 		if config.ComponentConfig.KubeCloudShared.AllowUntaggedCloud {
-			klog.Warning("detected a cluster without a ClusterID. A ClusterID will be required in the future. Please tag your cluster to avoid any future issues.")
+			klog.InfoS("WARNING: detected a cluster without a ClusterID", "detail",
+				"A ClusterID will be required in the future. Please tag your cluster to avoid any future issues.")
 		} else {
-			klog.Fatalf("no ClusterID found. A ClusterID is required for the cloud provider to function properly. This check can be bypassed by setting the allow-untagged-cloud option")
+			klog.ErrorS(nil, "No ClusterID found, a ClusterID is required for the cloud provider to function properly, "+
+				"this check can be bypassed by setting the allow-untagged-cloud option")
+			klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 		}
 	}
 

@@ -50,8 +50,16 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: lint
-lint: golangci-lint ## Run golangci-lint on the code.
-	$(GOLANGCI_LINT) run ./...
+lint: golangci-lint ## Run golangci-lint linter
+	"$(GOLANGCI_LINT)" run --max-same-issues=0
+
+.PHONY: lint-fix
+lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
+	"$(GOLANGCI_LINT)" run --fix
+
+.PHONY: lint-config
+lint-config: golangci-lint ## Verify golangci-lint linter configuration
+	"$(GOLANGCI_LINT)" config verify
 
 .PHONY: test
 test: fmt vet envtest check-license ## Run tests.
@@ -125,8 +133,8 @@ GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 
 ## Tool Versions
 ADDLICENSE_VERSION ?= v1.1.1
-GOIMPORTS_VERSION ?= v0.31.0
-GOLANGCI_LINT_VERSION ?= v2.10
+GOIMPORTS_VERSION ?= v0.45.0
+GOLANGCI_LINT_VERSION ?= v2.12
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller-runtime | awk -F'[v.]' '{printf "release-%d.%d", $$2, $$3}')
 #ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
@@ -151,6 +159,11 @@ $(GOIMPORTS): $(LOCALBIN)
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+	@test -f .custom-gcl.yml && { \
+		echo "Building custom golangci-lint with plugins..." && \
+		$(GOLANGCI_LINT) custom --destination $(LOCALBIN) --name golangci-lint-custom && \
+		mv -f $(LOCALBIN)/golangci-lint-custom $(GOLANGCI_LINT); \
+	} || true
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary
