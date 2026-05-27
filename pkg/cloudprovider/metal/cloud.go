@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 
 	metalv1alpha1 "github.com/ironcore-dev/metal-operator/api/v1alpha1"
 	"github.com/pkg/errors"
@@ -79,11 +78,13 @@ func (o *cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, 
 
 	cfg, err := clientBuilder.Config("cloud-controller-manager")
 	if err != nil {
-		log.Fatalf("Failed to get config: %v", err)
+		klog.ErrorS(err, "Failed to get config", "provider", ProviderName)
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 	o.targetCluster, err = cluster.New(cfg)
 	if err != nil {
-		log.Fatalf("Failed to create new cluster: %v", err)
+		klog.ErrorS(err, "Failed to create new cluster", "provider", ProviderName)
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
 	o.instancesV2 = newMetalInstancesV2(
@@ -97,7 +98,8 @@ func (o *cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, 
 		serverClaim := object.(*metalv1alpha1.ServerClaim)
 		return []string{string(serverClaim.UID)}
 	}); err != nil {
-		log.Fatalf("Failed to setup field indexer for server claims: %v", err)
+		klog.ErrorS(err, "Failed to setup field indexer for server claims", "provider", ProviderName)
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 	if err := o.targetCluster.GetFieldIndexer().IndexField(ctx, &corev1.Node{}, NodeProviderIDField, func(object client.Object) []string {
 		node := object.(*corev1.Node)
@@ -106,49 +108,58 @@ func (o *cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, 
 		}
 		return []string{node.Spec.ProviderID}
 	}); err != nil {
-		log.Fatalf("Failed to setup field indexer for nodes: %v", err)
+		klog.ErrorS(err, "Failed to setup field indexer for nodes", "provider", ProviderName)
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
 	go func() {
 		if err := o.metalCluster.Start(ctx); err != nil {
-			log.Fatalf("Failed to start metal cluster: %v", err)
+			klog.ErrorS(err, "Failed to start metal cluster", "provider", ProviderName)
+			klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 		}
 	}()
 
 	go func() {
 		if err := o.targetCluster.Start(ctx); err != nil {
-			log.Fatalf("Failed to start target cluster: %v", err)
+			klog.ErrorS(err, "Failed to start target cluster", "provider", ProviderName)
+			klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 		}
 	}()
 
 	var serverClaim metalv1alpha1.ServerClaim
 	claimInformer, err := o.metalCluster.GetCache().GetInformer(ctx, &serverClaim)
 	if err != nil {
-		log.Fatalf("Failed to setup ServerClaim informer: %v", err)
+		klog.ErrorS(err, "Failed to setup ServerClaim informer", "provider", ProviderName)
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 	serverClaimReconciler := NewServerClaimReconciler(o.targetCluster.GetClient(), o.metalCluster.GetClient(), claimInformer)
 	go func() {
 		if err := serverClaimReconciler.Start(ctx); err != nil {
-			log.Fatalf("Failed to start ServerClaim reconciler: %v", err)
+			klog.ErrorS(err, "Failed to start ServerClaim reconciler", "provider", ProviderName)
+			klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 		}
 	}()
 	var node corev1.Node
 	nodeInformer, err := o.targetCluster.GetCache().GetInformer(ctx, &node)
 	if err != nil {
-		log.Fatalf("Failed to setup Node informer: %v", err)
+		klog.ErrorS(err, "Failed to setup Node informer", "provider", ProviderName)
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 	nodeReconciler := NewNodeReconciler(o.targetCluster.GetClient(), o.metalCluster.GetClient(), nodeInformer)
 	go func() {
 		if err := nodeReconciler.Start(ctx); err != nil {
-			log.Fatalf("Failed to start Node reconciler: %v", err)
+			klog.ErrorS(err, "Failed to start Node reconciler", "provider", ProviderName)
+			klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 		}
 	}()
 
 	if !o.metalCluster.GetCache().WaitForCacheSync(ctx) {
-		log.Fatal("Failed to wait for metal cluster cache to sync")
+		klog.ErrorS(nil, "Failed to wait for metal cluster cache to sync", "provider", ProviderName)
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 	if !o.targetCluster.GetCache().WaitForCacheSync(ctx) {
-		log.Fatal("Failed to wait for target cluster cache to sync")
+		klog.ErrorS(nil, "Failed to wait for target cluster cache to sync", "provider", ProviderName)
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 	klog.V(2).InfoS("Successfully initialized cloud provider", "provider", ProviderName)
 }
