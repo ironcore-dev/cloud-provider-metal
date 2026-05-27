@@ -438,7 +438,7 @@ var _ = Describe("NodeReconciler", func() {
 	})
 
 	Context("Maintenance Approval Handshake", func() {
-		It("should add both approval labels to the ServerClaim when Node is approved with the new key", func(ctx SpecContext) {
+		It("should add approved label to the ServerClaim when Node is approved with the new key", func(ctx SpecContext) {
 			By("Adding maintenance-needed label to the ServerClaim")
 			Eventually(Update(serverClaim, func() {
 				if serverClaim.Labels == nil {
@@ -455,38 +455,13 @@ var _ = Describe("NodeReconciler", func() {
 				node.Labels[metalv1alpha1.ServerMaintenanceApprovedLabelKey] = TrueStr
 			})).Should(Succeed())
 
-			By("Verifying the ServerClaim receives both the new and the deprecated approval labels")
+			By("Verifying the ServerClaim receives approved label")
 			Eventually(Object(serverClaim)).Should(SatisfyAll(
 				HaveField("Labels", HaveKeyWithValue(metalv1alpha1.ServerMaintenanceApprovedLabelKey, TrueStr)),
-				HaveField("Labels", HaveKeyWithValue(metalv1alpha1.ServerMaintenanceApprovalKey, TrueStr)),
 			))
 		})
 
-		It("should add both approval labels to the ServerClaim when Node uses the deprecated approval key (backward compatibility)", func(ctx SpecContext) {
-			By("Adding maintenance-needed label to the ServerClaim")
-			Eventually(Update(serverClaim, func() {
-				if serverClaim.Labels == nil {
-					serverClaim.Labels = make(map[string]string)
-				}
-				serverClaim.Labels[metalv1alpha1.ServerMaintenanceNeededLabelKey] = TrueStr
-			})).Should(Succeed())
-
-			By("Adding the deprecated maintenance-approval label to the Node")
-			Eventually(Update(node, func() {
-				if node.Labels == nil {
-					node.Labels = make(map[string]string)
-				}
-				node.Labels[metalv1alpha1.ServerMaintenanceApprovalKey] = TrueStr
-			})).Should(Succeed())
-
-			By("Verifying the ServerClaim receives both the new and the deprecated approval labels")
-			Eventually(Object(serverClaim)).Should(SatisfyAll(
-				HaveField("Labels", HaveKeyWithValue(metalv1alpha1.ServerMaintenanceApprovedLabelKey, TrueStr)),
-				HaveField("Labels", HaveKeyWithValue(metalv1alpha1.ServerMaintenanceApprovalKey, TrueStr)),
-			))
-		})
-
-		It("should remove both approval labels from the ServerClaim when Node loses the approval label", func(ctx SpecContext) {
+		It("should remove approved label from the ServerClaim when Node loses the approved label", func(ctx SpecContext) {
 			By("Setting up the initial approved state")
 			Eventually(Update(serverClaim, func() {
 				if serverClaim.Labels == nil {
@@ -504,22 +479,20 @@ var _ = Describe("NodeReconciler", func() {
 
 			Eventually(Object(serverClaim)).Should(SatisfyAll(
 				HaveField("Labels", HaveKeyWithValue(metalv1alpha1.ServerMaintenanceApprovedLabelKey, TrueStr)),
-				HaveField("Labels", HaveKeyWithValue(metalv1alpha1.ServerMaintenanceApprovalKey, TrueStr)),
 			))
 
-			By("Removing the approval label from the Node")
+			By("Removing the approved label from the Node")
 			Eventually(Update(node, func() {
 				delete(node.Labels, metalv1alpha1.ServerMaintenanceApprovedLabelKey)
 			})).Should(Succeed())
 
-			By("Verifying both approval labels are removed from the ServerClaim")
+			By("Verifying approved label is removed from the ServerClaim")
 			Eventually(Object(serverClaim)).Should(SatisfyAll(
 				HaveField("Labels", Not(HaveKey(metalv1alpha1.ServerMaintenanceApprovedLabelKey))),
-				HaveField("Labels", Not(HaveKey(metalv1alpha1.ServerMaintenanceApprovalKey))),
 			))
 		})
 
-		It("should NOT add the approval labels to the ServerClaim if maintenance was not needed", func(ctx SpecContext) {
+		It("should NOT add approved label to the ServerClaim if maintenance was not needed", func(ctx SpecContext) {
 			By("Adding maintenance-approved label to the Node without needed label on Claim")
 			Eventually(Update(node, func() {
 				if node.Labels == nil {
@@ -528,10 +501,9 @@ var _ = Describe("NodeReconciler", func() {
 				node.Labels[metalv1alpha1.ServerMaintenanceApprovedLabelKey] = TrueStr
 			})).Should(Succeed())
 
-			By("Ensuring the ServerClaim does not get any approval label")
+			By("Ensuring the ServerClaim does not get approved label")
 			Consistently(Object(serverClaim)).Should(SatisfyAll(
 				HaveField("Labels", Not(HaveKey(metalv1alpha1.ServerMaintenanceApprovedLabelKey))),
-				HaveField("Labels", Not(HaveKey(metalv1alpha1.ServerMaintenanceApprovalKey))),
 			))
 		})
 	})

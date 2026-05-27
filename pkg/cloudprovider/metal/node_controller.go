@@ -294,12 +294,10 @@ func (r *NodeReconciler) reconcileMaintenance(ctx context.Context, node *corev1.
 	}
 
 	maintenanceNeeded := serverClaim.Labels[metalv1alpha1.ServerMaintenanceNeededLabelKey] == TrueStr
-	maintenanceApproved := node.Labels[metalv1alpha1.ServerMaintenanceApprovedLabelKey] == TrueStr ||
-		node.Labels[metalv1alpha1.ServerMaintenanceApprovalKey] == TrueStr
+	maintenanceApproved := node.Labels[metalv1alpha1.ServerMaintenanceApprovedLabelKey] == TrueStr
 
 	shouldHaveApproval := maintenanceNeeded && maintenanceApproved
-	hasApproval := serverClaim.Labels[metalv1alpha1.ServerMaintenanceApprovedLabelKey] == TrueStr ||
-		serverClaim.Labels[metalv1alpha1.ServerMaintenanceApprovalKey] == TrueStr
+	hasApproval := serverClaim.Labels[metalv1alpha1.ServerMaintenanceApprovedLabelKey] == TrueStr
 
 	if shouldHaveApproval != hasApproval {
 		if err = r.syncServerClaimApproval(ctx, serverClaim, shouldHaveApproval); err != nil {
@@ -357,15 +355,13 @@ func (r *NodeReconciler) syncServerClaimApproval(ctx context.Context, serverClai
 			serverClaim.Labels = make(map[string]string)
 		}
 		serverClaim.Labels[metalv1alpha1.ServerMaintenanceApprovedLabelKey] = TrueStr
-		serverClaim.Labels[metalv1alpha1.ServerMaintenanceApprovalKey] = TrueStr // deprecated, kept for backward compatibility
 
 	} else {
 		delete(serverClaim.Labels, metalv1alpha1.ServerMaintenanceApprovedLabelKey)
-		delete(serverClaim.Labels, metalv1alpha1.ServerMaintenanceApprovalKey)
 	}
 
 	if err := r.metalClient.Patch(ctx, serverClaim, client.MergeFrom(base)); err != nil {
-		return fmt.Errorf("unable to patch ServerClaim approval label: %w", err)
+		return fmt.Errorf("unable to patch ServerClaim approved label: %w", err)
 	}
 
 	return nil
