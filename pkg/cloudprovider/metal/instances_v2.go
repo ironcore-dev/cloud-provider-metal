@@ -16,7 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
-	capiv1beta1 "sigs.k8s.io/cluster-api/exp/ipam/api/v1beta1"
+	capiv1beta2 "sigs.k8s.io/cluster-api/api/ipam/v1beta2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -194,12 +194,12 @@ func (o *metalInstancesV2) getNodeAddresses(ctx context.Context, server *metalv1
 		return addresses, nil
 	}
 	ipamKind := o.cloudConfig.Networking.IPAMKind
-	if ipamKind.APIGroup == capiv1beta1.GroupVersion.Group && ipamKind.Kind == "IPAddress" {
+	if ipamKind.APIGroup == capiv1beta2.GroupVersion.Group && ipamKind.Kind == "IPAddress" {
 		selector := client.MatchingLabels{
 			LabelKeyServerClaimName:      claim.Name,
 			LabelKeyServerClaimNamespace: claim.Namespace,
 		}
-		var allIpClaims capiv1beta1.IPAddressClaimList
+		var allIpClaims capiv1beta2.IPAddressClaimList
 		if err := o.metalClient.List(ctx, &allIpClaims, client.InNamespace(o.metalNamespace), selector); err != nil {
 			return nil, err
 		}
@@ -207,7 +207,7 @@ func (o *metalInstancesV2) getNodeAddresses(ctx context.Context, server *metalv1
 			if ipClaim.Status.AddressRef.Name == "" {
 				continue
 			}
-			var ipAddr capiv1beta1.IPAddress
+			var ipAddr capiv1beta2.IPAddress
 			if err := o.metalClient.Get(ctx, client.ObjectKey{Name: ipClaim.Status.AddressRef.Name, Namespace: ipClaim.Namespace}, &ipAddr); err != nil {
 				return nil, fmt.Errorf("failed to get ip address object for node %s: %w", claim.Name, err)
 			}
