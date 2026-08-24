@@ -35,9 +35,9 @@ var _ = Describe("ServerClaimReconciler", func() {
 			ObjectMeta: metav1.ObjectMeta{
 				GenerateName: "test-",
 				Labels: map[string]string{
-					metalv1alpha1.AnnotationInstanceType: "foo",
-					corev1.LabelTopologyZone:             "a",
-					corev1.LabelTopologyRegion:           "bar",
+					LabelInstanceType:          "foo",
+					corev1.LabelTopologyZone:   "a",
+					corev1.LabelTopologyRegion: "bar",
 				},
 			},
 			Spec: metalv1alpha1.ServerSpec{

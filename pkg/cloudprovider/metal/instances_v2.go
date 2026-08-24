@@ -20,6 +20,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const (
+	// LabelInstanceType is used to specify the type of Server.
+	LabelInstanceType = "metal.ironcore.dev/instance-type"
+)
+
 type metalInstancesV2 struct {
 	targetClient   client.Client
 	metalClient    client.Client
@@ -125,7 +130,7 @@ func (o *metalInstancesV2) InstanceMetadata(ctx context.Context, node *corev1.No
 		providerID = buildProviderID(o.metalNamespace, serverClaim.Name)
 	}
 
-	instanceType, ok := server.Labels[metalv1alpha1.AnnotationInstanceType]
+	instanceType, ok := server.Labels[LabelInstanceType]
 	if !ok {
 		klog.V(2).InfoS("No instance type label found for node instance", "Node", node.Name)
 	}

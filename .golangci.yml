@@ -43,6 +43,9 @@ linters:
           - dupl
           - goconst
         path: pkg/cloudprovider/metal/*
+      - linters:
+          - staticcheck
+        text: "SA1019: metalv1alpha1.ServerMaintenance is deprecated"
     paths:
       - third_party$
       - builtin$
