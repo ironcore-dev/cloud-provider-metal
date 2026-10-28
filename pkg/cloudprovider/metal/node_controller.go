@@ -6,6 +6,7 @@ package metal
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"net"
 
 	metalv1alpha1 "github.com/ironcore-dev/metal-operator/api/v1alpha1"
@@ -236,7 +237,19 @@ func (r *NodeReconciler) reconcilePodCIDR(ctx context.Context, node *corev1.Node
 		return nil
 	}
 
-	podCIDR := fmt.Sprintf("%s/%d", nodePrefix.IP, PodPrefixSize)
+	podNetwork, err := nextPrefix(nodePrefix.IP, PodPrefixSize)
+	if err != nil {
+		return err
+	}
+
+	// The podCIDR must not leave the prefix allocated for the Node, otherwise
+	// it would collide with the address space of a different Node.
+	podPrefix := &net.IPNet{IP: podNetwork, Mask: net.CIDRMask(PodPrefixSize, len(podNetwork)*8)}
+	if !containsPrefix(nodePrefix, podPrefix) {
+		return fmt.Errorf("podCIDR %s of Node %s leaves the node's allocated prefix %s", podPrefix, node.Name, nodePrefix)
+	}
+
+	podCIDR := fmt.Sprintf("%s/%d", podNetwork, PodPrefixSize)
 
 	nodeBase := node.DeepCopy()
 	node.Spec.PodCIDR = podCIDR
@@ -287,6 +300,73 @@ func (r *NodeReconciler) podCIDRBasePrefix(ctx context.Context, serverClaim *met
 
 	klog.V(2).InfoS("Using Server's prefix as podCIDR base", "Server", server.Name, "prefix", prefixAnnotation)
 	return prefix, nil
+}
+
+// containsPrefix reports whether inner is fully contained within outer. Both
+// prefixes must address networks of the same address family; an inner prefix
+// size smaller than the outer's can never be contained.
+func containsPrefix(outer, inner *net.IPNet) bool {
+	outerOnes, outerBits := outer.Mask.Size()
+	innerOnes, innerBits := inner.Mask.Size()
+	if outerOnes == 0 && outerBits == 0 {
+		// Unparsable mask.
+		return false
+	}
+	if outerBits != innerBits || innerOnes < outerOnes {
+		return false
+	}
+
+	return outer.IP.Mask(outer.Mask).Equal(inner.IP.Mask(outer.Mask))
+}
+
+// nextPrefix returns the IP address of the prefix that follows the one
+// containing ip at the given maskSize.
+func nextPrefix(ip net.IP, maskSize int) (net.IP, error) {
+	isIPv6 := false
+	ipBitLen := net.IPv4len * 8
+	if ip.To4() == nil {
+		isIPv6 = true
+		ipBitLen = net.IPv6len * 8
+	}
+
+	mask := net.CIDRMask(maskSize, ipBitLen)
+	if mask == nil {
+		return nil, fmt.Errorf("invalid prefix size %d for address family (bit length %d)", maskSize, ipBitLen)
+	}
+	originalPrefix := ip.Mask(mask)
+
+	// offset is the size of one prefix block (2^hostBits).
+	offset := big.NewInt(1)
+	offset.Lsh(offset, uint(ipBitLen-maskSize))
+
+	// Adding the integer representations of the original prefix and the offset
+	// increases the network portion by one.
+	ipAsInt := ipToInt(originalPrefix)
+	ipAsInt.Add(ipAsInt, offset)
+
+	maxVal := new(big.Int).Lsh(big.NewInt(1), uint(ipBitLen))
+	if ipAsInt.Cmp(maxVal) >= 0 {
+		return nil, fmt.Errorf("next prefix overflows address space for IP %s/%d", ip, maskSize)
+	}
+
+	return intToIP(ipAsInt, isIPv6).Mask(mask), nil
+}
+
+// ipToInt converts the IP address to an integer
+func ipToInt(ip net.IP) *big.Int {
+	return big.NewInt(0).SetBytes(ip)
+}
+
+// intToIP converts the integer to an IP address.
+func intToIP(i *big.Int, isIPv6 bool) net.IP {
+	var ipLen int
+	if isIPv6 {
+		ipLen = net.IPv6len
+	} else {
+		ipLen = net.IPv4len
+	}
+
+	return i.FillBytes(make([]byte, ipLen))
 }
 
 func (r *NodeReconciler) reconcileMaintenance(ctx context.Context, node *corev1.Node, serverClaim *metalv1alpha1.ServerClaim) error {
