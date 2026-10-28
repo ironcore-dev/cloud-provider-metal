@@ -26,8 +26,10 @@ const (
 	ProviderName = "metal"
 	// serverClaimMetadataUIDField is the field used to index ServerClaims by their UID
 	serverClaimMetadataUIDField = ".metadata.uid"
-	// LoopbackAddressAnnotation is the annotation used to specify a loopback address for the Machine
-	LoopbackAddressAnnotation = "metal.ironcore.dev/loopback-address"
+	// NodePrefixAnnotation is the annotation used to specify the prefix, in CIDR
+	// notation, assigned to the Server backing a Node. By convention, the first
+	// usable host IP of the prefix is assigned to the Node itself.
+	NodePrefixAnnotation = "metadata.metal.ironcore.dev/prefix"
 )
 
 var metalScheme = runtime.NewScheme()

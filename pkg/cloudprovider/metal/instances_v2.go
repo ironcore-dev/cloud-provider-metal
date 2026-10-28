@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"net/url"
 	"strings"
 
@@ -169,16 +170,21 @@ func (o *metalInstancesV2) getNodeAddresses(ctx context.Context, server *metalv1
 		return addresses, nil
 	}
 	if o.cloudConfig.Networking.IPAMKind == nil {
-		loopbackAddress, ok := server.Annotations[LoopbackAddressAnnotation]
-		if ok {
-			klog.V(2).InfoS("Loopback address annotation found for server", "Server", client.ObjectKeyFromObject(server))
-			addresses = append(addresses, corev1.NodeAddress{
-				Type:    corev1.NodeInternalIP,
-				Address: loopbackAddress,
-			})
-			return addresses, nil
+		if prefixAnnotation, ok := server.Annotations[NodePrefixAnnotation]; ok {
+			klog.V(2).InfoS("Prefix annotation found for server", "Server", client.ObjectKeyFromObject(server))
+			if prefix, err := netip.ParsePrefix(prefixAnnotation); err == nil {
+				// By convention, the first usable host IP of the prefix is
+				// assigned to the node itself.
+				addresses = append(addresses, corev1.NodeAddress{
+					Type:    corev1.NodeInternalIP,
+					Address: prefix.Masked().Addr().Next().String(),
+				})
+				return addresses, nil
+			} else {
+				klog.ErrorS(err, "Invalid prefix annotation for server, falling back to network interfaces", "Server", client.ObjectKeyFromObject(server), "prefix", prefixAnnotation)
+			}
 		} else {
-			klog.V(2).InfoS("No loopback address annotation found for server", "Server", client.ObjectKeyFromObject(server))
+			klog.V(2).InfoS("No prefix annotation found for server", "Server", client.ObjectKeyFromObject(server))
 		}
 
 		klog.V(2).InfoS("Fallback to server status network interfaces for node addresses", "Server", client.ObjectKeyFromObject(server))
