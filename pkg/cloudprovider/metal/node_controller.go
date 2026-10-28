@@ -127,15 +127,42 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) error 
 		return r.reconcileDelete(ctx, node)
 	}
 
-	if err := r.reconcilePodCIDR(ctx, node); err != nil {
+	serverClaim, err := r.getServerClaimForNode(ctx, node)
+	if err != nil {
+		return fmt.Errorf("unable to resolve ServerClaim for Node: %w", err)
+	}
+
+	if err := r.reconcilePodCIDR(ctx, node, serverClaim); err != nil {
 		return fmt.Errorf("unable to reconcile PodCIDR: %w", err)
 	}
 
-	if err := r.reconcileMaintenance(ctx, node); err != nil {
+	if err := r.reconcileMaintenance(ctx, node, serverClaim); err != nil {
 		return fmt.Errorf("unable to reconcile maintenance: %w", err)
 	}
 
 	return nil
+}
+
+// getServerClaimForNode resolves the ServerClaim referenced by the Node's
+// spec.providerID. It returns a nil ServerClaim (and no error) if the Node has
+// an empty/invalid providerID or if the ServerClaim does not exist.
+func (r *NodeReconciler) getServerClaimForNode(ctx context.Context, node *corev1.Node) (*metalv1alpha1.ServerClaim, error) {
+	serverClaimKey, err := getObjectKeyFromProviderID(node.Spec.ProviderID)
+	if err != nil {
+		klog.ErrorS(err, "Node has empty/invalid spec.providerID", "node", node.Name, "providerID", node.Spec.ProviderID)
+		return nil, nil
+	}
+
+	serverClaim := &metalv1alpha1.ServerClaim{}
+	if err := r.metalClient.Get(ctx, serverClaimKey, serverClaim); err != nil {
+		if apierrors.IsNotFound(err) {
+			klog.V(2).InfoS("ServerClaim not found", "serverclaim", serverClaimKey, "node", node.Name)
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return serverClaim, nil
 }
 
 func (r *NodeReconciler) reconcileDelete(ctx context.Context, node *corev1.Node) error {
@@ -189,7 +216,7 @@ func (r *NodeReconciler) ensureServerMaintenanceNotExists(ctx context.Context, k
 	return nil
 }
 
-func (r *NodeReconciler) reconcilePodCIDR(ctx context.Context, node *corev1.Node) error {
+func (r *NodeReconciler) reconcilePodCIDR(ctx context.Context, node *corev1.Node, serverClaim *metalv1alpha1.ServerClaim) error {
 	if PodPrefixSize <= 0 {
 		// <= 0 disables automatic assignment of pod CIDR.
 		return nil
@@ -200,81 +227,97 @@ func (r *NodeReconciler) reconcilePodCIDR(ctx context.Context, node *corev1.Node
 		return nil
 	}
 
-	for _, addr := range node.Status.Addresses {
-		if addr.Type == corev1.NodeInternalIP {
-			ip := net.ParseIP(addr.Address)
-			if ip == nil {
-				return fmt.Errorf("invalid IP address format")
-			}
-
-			maskedIP := zeroHostBits(ip, PodPrefixSize)
-			podCIDR := fmt.Sprintf("%s/%d", maskedIP, PodPrefixSize)
-
-			nodeBase := node.DeepCopy()
-			node.Spec.PodCIDR = podCIDR
-			if node.Spec.PodCIDRs == nil {
-				node.Spec.PodCIDRs = []string{}
-			}
-			node.Spec.PodCIDRs = append(node.Spec.PodCIDRs, podCIDR)
-
-			if err := r.targetClient.Patch(ctx, node, client.MergeFrom(nodeBase)); err != nil {
-				return fmt.Errorf("failed to patch Node's PodCIDR with error %w", err)
-			}
-
-			klog.InfoS("Patched Node's PodCIDR and PodCIDRs", "Node", node.Name, "PodCIDR", podCIDR)
-
-			return nil
-		}
+	nodePrefix, err := r.podCIDRBasePrefix(ctx, serverClaim)
+	if err != nil {
+		return err
+	}
+	if nodePrefix == nil {
+		klog.V(2).InfoS("Node has no prefix annotation on its Server, not setting podCIDR", "Node", node.Name)
+		return nil
 	}
 
-	klog.InfoS("Node does not have a NodeInternalIP, not setting podCIDR")
+	podCIDR := fmt.Sprintf("%s/%d", nodePrefix.IP, PodPrefixSize)
+
+	nodeBase := node.DeepCopy()
+	node.Spec.PodCIDR = podCIDR
+	if node.Spec.PodCIDRs == nil {
+		node.Spec.PodCIDRs = []string{}
+	}
+	node.Spec.PodCIDRs = append(node.Spec.PodCIDRs, podCIDR)
+
+	if err := r.targetClient.Patch(ctx, node, client.MergeFrom(nodeBase)); err != nil {
+		return fmt.Errorf("failed to patch Node's PodCIDR with error %w", err)
+	}
+
+	klog.InfoS("Patched Node's PodCIDR and PodCIDRs", "Node", node.Name, "PodCIDR", podCIDR)
+
 	return nil
 }
 
-func zeroHostBits(ip net.IP, maskSize int) net.IP {
-	if ip.To4() != nil {
-		mask := net.CIDRMask(maskSize, 32)
-		return ip.Mask(mask)
+// podCIDRBasePrefix determines the prefix allocated for the Node, which
+// serves as the base for the Node's podCIDR. It is sourced from the prefix
+// annotation, in CIDR notation, of the Server backing the Node. It returns
+// nil if the Server or the annotation is not (yet) available, and an error if
+// the annotation value is not a valid prefix.
+func (r *NodeReconciler) podCIDRBasePrefix(ctx context.Context, serverClaim *metalv1alpha1.ServerClaim) (*net.IPNet, error) {
+	if serverClaim == nil || serverClaim.Spec.ServerRef == nil {
+		return nil, nil
 	}
 
-	mask := net.CIDRMask(maskSize, 128)
-	return ip.Mask(mask)
+	serverKey := types.NamespacedName{Namespace: serverClaim.Namespace, Name: serverClaim.Spec.ServerRef.Name}
+	server := &metalv1alpha1.Server{}
+	if err := r.metalClient.Get(ctx, serverKey, server); err != nil {
+		if apierrors.IsNotFound(err) {
+			klog.V(2).InfoS("Server not found, not setting podCIDR", "server", serverKey)
+			return nil, nil
+		}
+		return nil, fmt.Errorf("unable to get Server: %w", err)
+	}
+
+	prefixAnnotation := server.Annotations[NodePrefixAnnotation]
+	if prefixAnnotation == "" {
+		klog.V(2).InfoS("Server has no prefix annotation, not setting podCIDR", "Server", server.Name)
+		return nil, nil
+	}
+
+	_, prefix, err := net.ParseCIDR(prefixAnnotation)
+	if err != nil {
+		return nil, fmt.Errorf("server %s has an invalid prefix annotation %q: %w", server.Name, prefixAnnotation, err)
+	}
+
+	klog.V(2).InfoS("Using Server's prefix as podCIDR base", "Server", server.Name, "prefix", prefixAnnotation)
+	return prefix, nil
 }
 
-func (r *NodeReconciler) reconcileMaintenance(ctx context.Context, node *corev1.Node) error {
-	serverClaimKey, err := getObjectKeyFromProviderID(node.Spec.ProviderID)
+func (r *NodeReconciler) reconcileMaintenance(ctx context.Context, node *corev1.Node, serverClaim *metalv1alpha1.ServerClaim) error {
+	maintenanceKey, err := getObjectKeyFromProviderID(node.Spec.ProviderID)
 	if err != nil {
 		klog.ErrorS(err, "Node has invalid spec.providerID", "node", node.Name, "providerID", node.Spec.ProviderID)
 		return nil
 	}
 
-	maintenanceKey := serverClaimKey
 	maintenanceRequested := node.Labels[metalv1alpha1.ServerMaintenanceRequestedLabelKey] == TrueStr
 
 	if !maintenanceRequested {
-		if err = r.ensureServerMaintenanceNotExists(ctx, maintenanceKey); err != nil {
+		if err := r.ensureServerMaintenanceNotExists(ctx, maintenanceKey); err != nil {
 			return fmt.Errorf("unable to ensure ServerMaintenance CR not exists: %w", err)
 		}
 
 		base := node.DeepCopy()
 		if removed := controllerutil.RemoveFinalizer(node, nodeMaintenanceFinalizer); removed {
-			if err = r.targetClient.Patch(ctx, node, client.MergeFrom(base)); err != nil {
+			if err := r.targetClient.Patch(ctx, node, client.MergeFrom(base)); err != nil {
 				return fmt.Errorf("unable to remove finalizer: %w", err)
 			}
 		}
 	}
 
-	serverClaim := &metalv1alpha1.ServerClaim{}
-	if err = r.metalClient.Get(ctx, serverClaimKey, serverClaim); err != nil {
-		if apierrors.IsNotFound(err) {
-			klog.V(2).InfoS("ServerClaim not found, skipping maintenance creation and handshake", "serverclaim", serverClaimKey)
-			return nil
-		}
-		return fmt.Errorf("unable to get ServerClaim: %w", err)
+	if serverClaim == nil {
+		klog.V(2).InfoS("ServerClaim not found, skipping maintenance creation and handshake", "node", node.Name)
+		return nil
 	}
 
 	if serverClaim.Spec.ServerRef == nil {
-		klog.V(2).InfoS("ServerClaim has empty ServerRef, skipping maintenance logic", "serverclaim", serverClaimKey)
+		klog.V(2).InfoS("ServerClaim has empty ServerRef, skipping maintenance logic", "serverclaim", client.ObjectKeyFromObject(serverClaim))
 		return nil
 	}
 
