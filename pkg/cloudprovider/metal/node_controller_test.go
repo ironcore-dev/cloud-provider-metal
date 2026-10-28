@@ -4,8 +4,6 @@
 package metal
 
 import (
-	"net"
-
 	metalv1alpha1 "github.com/ironcore-dev/metal-operator/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -19,6 +17,7 @@ import (
 var _ = Describe("NodeReconciler", func() {
 
 	var (
+		server      *metalv1alpha1.Server
 		serverClaim *metalv1alpha1.ServerClaim
 		node        *corev1.Node
 	)
@@ -33,7 +32,7 @@ var _ = Describe("NodeReconciler", func() {
 		Expect(ok).To(BeTrue())
 
 		By("Creating a Server")
-		server := &metalv1alpha1.Server{
+		server = &metalv1alpha1.Server{
 			ObjectMeta: metav1.ObjectMeta{
 				GenerateName: "test-",
 				Labels: map[string]string{
@@ -115,18 +114,43 @@ var _ = Describe("NodeReconciler", func() {
 			PodPrefixSize = 0
 		})
 
-		It("should assign PodCIDR to a node with NodeInternalIP", func(ctx SpecContext) {
-			By("Setting the NodeInternalIP address on the node")
-			Eventually(UpdateStatus(node, func() {
-				node.Status.Addresses = append(node.Status.Addresses, corev1.NodeAddress{
-					Type:    corev1.NodeInternalIP,
-					Address: "10.0.5.42",
-				})
+		It("should assign PodCIDR based on the Server's IPv4 prefix annotation", func(ctx SpecContext) {
+			By("Setting the prefix annotation on the Server")
+			Eventually(Update(server, func() {
+				server.Annotations = map[string]string{
+					NodePrefixAnnotation: "10.0.5.0/24",
+				}
+			})).Should(Succeed())
+
+			By("Triggering reconciliation by patching the Node")
+			Eventually(Update(node, func() {
+				node.Annotations = map[string]string{"test/trigger": "true"}
 			})).Should(Succeed())
 
 			By("Verifying PodCIDR is assigned to the node")
 			Eventually(Object(node)).Should(HaveField("Spec.PodCIDR", "10.0.5.0/24"))
 			Eventually(Object(node)).Should(HaveField("Spec.PodCIDRs", ContainElement("10.0.5.0/24")))
+		})
+
+		It("should assign PodCIDR based on the Server's IPv6 prefix annotation", func(ctx SpecContext) {
+			By("Setting an IPv6 suitable pod prefix size")
+			PodPrefixSize = 64
+
+			By("Setting the IPv6 prefix annotation on the Server")
+			Eventually(Update(server, func() {
+				server.Annotations = map[string]string{
+					NodePrefixAnnotation: "2001:db8:5::/64",
+				}
+			})).Should(Succeed())
+
+			By("Triggering reconciliation by patching the Node")
+			Eventually(Update(node, func() {
+				node.Annotations = map[string]string{"test/trigger": "true"}
+			})).Should(Succeed())
+
+			By("Verifying PodCIDR is assigned to the node")
+			Eventually(Object(node)).Should(HaveField("Spec.PodCIDR", "2001:db8:5::/64"))
+			Eventually(Object(node)).Should(HaveField("Spec.PodCIDRs", ContainElement("2001:db8:5::/64")))
 		})
 
 		It("should not overwrite existing PodCIDR", func(ctx SpecContext) {
@@ -135,19 +159,23 @@ var _ = Describe("NodeReconciler", func() {
 			node.Spec.PodCIDR = "192.168.0.0/24"
 			Expect(k8sClient.Patch(ctx, node, client.MergeFrom(originalNode))).To(Succeed())
 
-			By("Setting the NodeInternalIP address on the node")
-			Eventually(UpdateStatus(node, func() {
-				node.Status.Addresses = append(node.Status.Addresses, corev1.NodeAddress{
-					Type:    corev1.NodeInternalIP,
-					Address: "10.0.5.42",
-				})
+			By("Setting the prefix annotation on the Server")
+			Eventually(Update(server, func() {
+				server.Annotations = map[string]string{
+					NodePrefixAnnotation: "10.0.5.0/24",
+				}
+			})).Should(Succeed())
+
+			By("Triggering reconciliation by patching the Node")
+			Eventually(Update(node, func() {
+				node.Annotations = map[string]string{"test/trigger": "true"}
 			})).Should(Succeed())
 
 			By("Verifying PodCIDR was not overwritten")
 			Consistently(Object(node)).Should(HaveField("Spec.PodCIDR", "192.168.0.0/24"))
 		})
 
-		It("should not assign PodCIDR if node has no NodeInternalIP", func(ctx SpecContext) {
+		It("should not assign PodCIDR if the Server has no prefix annotation", func(ctx SpecContext) {
 			By("Triggering reconciliation by patching the claim")
 			originalServerClaim := serverClaim.DeepCopy()
 			serverClaim.Labels = map[string]string{
@@ -163,12 +191,11 @@ var _ = Describe("NodeReconciler", func() {
 			By("Disabling PodCIDR assignment")
 			PodPrefixSize = 0
 
-			By("Setting the NodeInternalIP address on the node")
-			Eventually(UpdateStatus(node, func() {
-				node.Status.Addresses = append(node.Status.Addresses, corev1.NodeAddress{
-					Type:    corev1.NodeInternalIP,
-					Address: "10.0.5.42",
-				})
+			By("Setting the prefix annotation on the Server")
+			Eventually(Update(server, func() {
+				server.Annotations = map[string]string{
+					NodePrefixAnnotation: "10.0.5.0/24",
+				}
 			})).Should(Succeed())
 
 			By("Triggering reconciliation by patching the claim")
@@ -178,7 +205,7 @@ var _ = Describe("NodeReconciler", func() {
 			}
 			Expect(k8sClient.Patch(ctx, serverClaim, client.MergeFrom(originalServerClaim))).To(Succeed())
 
-			By("Verifying PodCIDR remains empty despite having NodeInternalIP")
+			By("Verifying PodCIDR remains empty despite the prefix annotation")
 			Consistently(Object(node)).Should(HaveField("Spec.PodCIDR", ""))
 		})
 	})
@@ -507,29 +534,4 @@ var _ = Describe("NodeReconciler", func() {
 			))
 		})
 	})
-})
-
-var _ = Describe("zeroHostBits", func() {
-	DescribeTable("should correctly mask IPv4 addresses",
-		func(ip string, maskSize int, expected string) {
-			result := zeroHostBits(net.ParseIP(ip), maskSize)
-			Expect(result.String()).To(Equal(expected))
-		},
-		Entry("mask /24", "10.0.5.42", 24, "10.0.5.0"),
-		Entry("mask /16", "10.0.5.42", 16, "10.0.0.0"),
-		Entry("mask /8", "10.20.30.40", 8, "10.0.0.0"),
-		Entry("mask /32", "10.0.5.42", 32, "10.0.5.42"),
-		Entry("mask /0", "10.0.5.42", 0, "0.0.0.0"),
-	)
-
-	DescribeTable("should correctly mask IPv6 addresses",
-		func(ip string, maskSize int, expected string) {
-			result := zeroHostBits(net.ParseIP(ip), maskSize)
-			Expect(result.String()).To(Equal(expected))
-		},
-		Entry("mask /64", "2001:db8::1", 64, "2001:db8::"),
-		Entry("mask /48", "2001:db8:1234:5678::1", 48, "2001:db8:1234::"),
-		Entry("mask /128", "2001:db8::1", 128, "2001:db8::1"),
-		Entry("mask /0", "2001:db8::1", 0, "::"),
-	)
 })
