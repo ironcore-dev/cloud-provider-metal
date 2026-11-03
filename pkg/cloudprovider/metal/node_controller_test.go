@@ -19,6 +19,7 @@ import (
 var _ = Describe("NodeReconciler", func() {
 
 	var (
+		server      *metalv1alpha1.Server
 		serverClaim *metalv1alpha1.ServerClaim
 		node        *corev1.Node
 	)
@@ -33,7 +34,7 @@ var _ = Describe("NodeReconciler", func() {
 		Expect(ok).To(BeTrue())
 
 		By("Creating a Server")
-		server := &metalv1alpha1.Server{
+		server = &metalv1alpha1.Server{
 			ObjectMeta: metav1.ObjectMeta{
 				GenerateName: "test-",
 				Labels: map[string]string{
@@ -115,18 +116,43 @@ var _ = Describe("NodeReconciler", func() {
 			PodPrefixSize = 0
 		})
 
-		It("should assign PodCIDR to a node with NodeInternalIP", func(ctx SpecContext) {
-			By("Setting the NodeInternalIP address on the node")
-			Eventually(UpdateStatus(node, func() {
-				node.Status.Addresses = append(node.Status.Addresses, corev1.NodeAddress{
-					Type:    corev1.NodeInternalIP,
-					Address: "10.0.5.42",
-				})
+		It("should assign PodCIDR based on the Server's IPv4 prefix annotation", func(ctx SpecContext) {
+			By("Setting the prefix annotation on the Server")
+			Eventually(Update(server, func() {
+				server.Annotations = map[string]string{
+					NodePrefixAnnotation: "10.0.0.0/16",
+				}
+			})).Should(Succeed())
+
+			By("Triggering reconciliation by patching the Node")
+			Eventually(Update(node, func() {
+				node.Annotations = map[string]string{"test/trigger": "true"}
 			})).Should(Succeed())
 
 			By("Verifying PodCIDR is assigned to the node")
-			Eventually(Object(node)).Should(HaveField("Spec.PodCIDR", "10.0.5.0/24"))
-			Eventually(Object(node)).Should(HaveField("Spec.PodCIDRs", ContainElement("10.0.5.0/24")))
+			Eventually(Object(node)).Should(HaveField("Spec.PodCIDR", "10.0.1.0/24"))
+			Eventually(Object(node)).Should(HaveField("Spec.PodCIDRs", ContainElement("10.0.1.0/24")))
+		})
+
+		It("should assign PodCIDR based on the Server's IPv6 prefix annotation", func(ctx SpecContext) {
+			By("Setting an IPv6 suitable pod prefix size")
+			PodPrefixSize = 64
+
+			By("Setting the IPv6 prefix annotation on the Server")
+			Eventually(Update(server, func() {
+				server.Annotations = map[string]string{
+					NodePrefixAnnotation: "2001:db8:5::/48",
+				}
+			})).Should(Succeed())
+
+			By("Triggering reconciliation by patching the Node")
+			Eventually(Update(node, func() {
+				node.Annotations = map[string]string{"test/trigger": "true"}
+			})).Should(Succeed())
+
+			By("Verifying PodCIDR is assigned to the node")
+			Eventually(Object(node)).Should(HaveField("Spec.PodCIDR", "2001:db8:5:1::/64"))
+			Eventually(Object(node)).Should(HaveField("Spec.PodCIDRs", ContainElement("2001:db8:5:1::/64")))
 		})
 
 		It("should not overwrite existing PodCIDR", func(ctx SpecContext) {
@@ -135,19 +161,23 @@ var _ = Describe("NodeReconciler", func() {
 			node.Spec.PodCIDR = "192.168.0.0/24"
 			Expect(k8sClient.Patch(ctx, node, client.MergeFrom(originalNode))).To(Succeed())
 
-			By("Setting the NodeInternalIP address on the node")
-			Eventually(UpdateStatus(node, func() {
-				node.Status.Addresses = append(node.Status.Addresses, corev1.NodeAddress{
-					Type:    corev1.NodeInternalIP,
-					Address: "10.0.5.42",
-				})
+			By("Setting the prefix annotation on the Server")
+			Eventually(Update(server, func() {
+				server.Annotations = map[string]string{
+					NodePrefixAnnotation: "10.0.5.0/24",
+				}
+			})).Should(Succeed())
+
+			By("Triggering reconciliation by patching the Node")
+			Eventually(Update(node, func() {
+				node.Annotations = map[string]string{"test/trigger": "true"}
 			})).Should(Succeed())
 
 			By("Verifying PodCIDR was not overwritten")
 			Consistently(Object(node)).Should(HaveField("Spec.PodCIDR", "192.168.0.0/24"))
 		})
 
-		It("should not assign PodCIDR if node has no NodeInternalIP", func(ctx SpecContext) {
+		It("should not assign PodCIDR if the Server has no prefix annotation", func(ctx SpecContext) {
 			By("Triggering reconciliation by patching the claim")
 			originalServerClaim := serverClaim.DeepCopy()
 			serverClaim.Labels = map[string]string{
@@ -163,12 +193,11 @@ var _ = Describe("NodeReconciler", func() {
 			By("Disabling PodCIDR assignment")
 			PodPrefixSize = 0
 
-			By("Setting the NodeInternalIP address on the node")
-			Eventually(UpdateStatus(node, func() {
-				node.Status.Addresses = append(node.Status.Addresses, corev1.NodeAddress{
-					Type:    corev1.NodeInternalIP,
-					Address: "10.0.5.42",
-				})
+			By("Setting the prefix annotation on the Server")
+			Eventually(Update(server, func() {
+				server.Annotations = map[string]string{
+					NodePrefixAnnotation: "10.0.5.0/24",
+				}
 			})).Should(Succeed())
 
 			By("Triggering reconciliation by patching the claim")
@@ -178,8 +207,41 @@ var _ = Describe("NodeReconciler", func() {
 			}
 			Expect(k8sClient.Patch(ctx, serverClaim, client.MergeFrom(originalServerClaim))).To(Succeed())
 
-			By("Verifying PodCIDR remains empty despite having NodeInternalIP")
+			By("Verifying PodCIDR remains empty despite the prefix annotation")
 			Consistently(Object(node)).Should(HaveField("Spec.PodCIDR", ""))
+		})
+
+		It("should not assign PodCIDR if the shifted prefix leaves the node's prefix", func(ctx SpecContext) {
+			By("Setting a prefix annotation that does not contain the next pod prefix")
+			Eventually(Update(server, func() {
+				server.Annotations = map[string]string{
+					NodePrefixAnnotation: "10.0.255.0/24",
+				}
+			})).Should(Succeed())
+
+			By("Triggering reconciliation by patching the Node")
+			Eventually(Update(node, func() {
+				node.Annotations = map[string]string{"test/trigger": "true"}
+			})).Should(Succeed())
+
+			By("Verifying PodCIDR remains empty")
+			Consistently(Object(node)).Should(HaveField("Spec.PodCIDR", ""))
+		})
+
+		It("should return an error if the shifted prefix leaves the node's prefix", func(ctx SpecContext) {
+			By("Setting a prefix annotation that does not contain the next pod prefix")
+			Eventually(Update(server, func() {
+				server.Annotations = map[string]string{
+					NodePrefixAnnotation: "10.0.255.0/24",
+				}
+			})).Should(Succeed())
+
+			By("Reconciling the PodCIDR directly")
+			reconciler := NodeReconciler{targetClient: k8sClient, metalClient: k8sClient}
+			err := reconciler.reconcilePodCIDR(ctx, node, serverClaim)
+
+			By("Verifying an out-of-bounds podCIDR is surfaced as an error")
+			Expect(err).To(MatchError(ContainSubstring("leaves the node's allocated prefix")))
 		})
 	})
 
@@ -509,27 +571,74 @@ var _ = Describe("NodeReconciler", func() {
 	})
 })
 
-var _ = Describe("zeroHostBits", func() {
-	DescribeTable("should correctly mask IPv4 addresses",
+var _ = Describe("nextPrefix", func() {
+	DescribeTable("should return the next prefix for IPv4 addresses",
 		func(ip string, maskSize int, expected string) {
-			result := zeroHostBits(net.ParseIP(ip), maskSize)
+			result, err := nextPrefix(net.ParseIP(ip), maskSize)
+			Expect(err).NotTo(HaveOccurred())
 			Expect(result.String()).To(Equal(expected))
 		},
-		Entry("mask /24", "10.0.5.42", 24, "10.0.5.0"),
-		Entry("mask /16", "10.0.5.42", 16, "10.0.0.0"),
-		Entry("mask /8", "10.20.30.40", 8, "10.0.0.0"),
-		Entry("mask /32", "10.0.5.42", 32, "10.0.5.42"),
-		Entry("mask /0", "10.0.5.42", 0, "0.0.0.0"),
+		// Host IP within a block advances to the start of the next block.
+		Entry("next /24", "10.0.5.42", 24, "10.0.6.0"),
+		// Already prefix-aligned input still advances by one block.
+		Entry("aligned /24", "10.0.5.0", 24, "10.0.6.0"),
+		// Carry propagates across octet boundaries.
+		Entry("carry across /24", "10.0.255.100", 24, "10.1.0.0"),
+		Entry("next /16", "10.5.1.1", 16, "10.6.0.0"),
+		Entry("next /8", "10.20.30.40", 8, "11.0.0.0"),
+		// /32: zero host bits, offset=1, so the "next prefix" is simply ip+1.
+		Entry("next /32", "10.0.5.42", 32, "10.0.5.43"),
 	)
 
-	DescribeTable("should correctly mask IPv6 addresses",
+	DescribeTable("should return the next prefix for IPv6 addresses",
 		func(ip string, maskSize int, expected string) {
-			result := zeroHostBits(net.ParseIP(ip), maskSize)
+			result, err := nextPrefix(net.ParseIP(ip), maskSize)
+			Expect(err).NotTo(HaveOccurred())
 			Expect(result.String()).To(Equal(expected))
 		},
-		Entry("mask /64", "2001:db8::1", 64, "2001:db8::"),
-		Entry("mask /48", "2001:db8:1234:5678::1", 48, "2001:db8:1234::"),
-		Entry("mask /128", "2001:db8::1", 128, "2001:db8::1"),
-		Entry("mask /0", "2001:db8::1", 0, "::"),
+		// /112 is the prefix size commonly used for pod CIDRs.
+		Entry("next /112", "2001:db8::1", 112, "2001:db8::1:0"),
+		Entry("next /64", "2001:db8::1", 64, "2001:db8:0:1::"),
+		Entry("aligned /64", "2001:db8:0:1::", 64, "2001:db8:0:2::"),
+		Entry("next /48", "2001:db8:1234:5678::1", 48, "2001:db8:1235::"),
+		// /128: zero host bits, offset=1, so the "next prefix" is simply ip+1.
+		Entry("next /128", "2001:db8::1", 128, "2001:db8::2"),
+	)
+
+	DescribeTable("should return an error",
+		func(ip string, maskSize int) {
+			_, err := nextPrefix(net.ParseIP(ip), maskSize)
+			Expect(err).To(HaveOccurred())
+		},
+		// Last IPv4 block: adding one block overflows the address space.
+		Entry("IPv4 overflow", "255.255.255.1", 24),
+		// Last IPv6 block at /112.
+		Entry("IPv6 overflow", "ffff:ffff:ffff:ffff:ffff:ffff:ffff:1", 112),
+		// maskSize exceeds the address family's bit length.
+		Entry("IPv4 invalid mask", "10.0.0.1", 33),
+		Entry("IPv6 invalid mask", "2001:db8::1", 129),
+	)
+})
+
+var _ = Describe("containsPrefix", func() {
+	cidr := func(s string) *net.IPNet {
+		_, prefix, err := net.ParseCIDR(s)
+		Expect(err).NotTo(HaveOccurred())
+		return prefix
+	}
+
+	DescribeTable("should detect containment",
+		func(outer, inner string, expected bool) {
+			Expect(containsPrefix(cidr(outer), cidr(inner))).To(Equal(expected))
+		},
+		Entry("IPv4 contained", "10.0.0.0/16", "10.0.6.0/24", true),
+		Entry("IPv4 same prefix", "10.0.0.0/16", "10.0.0.0/16", true),
+		Entry("IPv4 outside", "10.0.0.0/16", "10.1.0.0/24", false),
+		Entry("IPv4 inner larger than outer", "10.0.5.0/24", "10.0.0.0/16", false),
+		Entry("IPv6 contained", "2001:db8:5::/48", "2001:db8:5:1::/64", true),
+		Entry("IPv6 same prefix", "2001:db8:5::/48", "2001:db8:5::/48", true),
+		Entry("IPv6 outside", "2001:db8:5::/48", "2001:db8:9::/64", false),
+		Entry("IPv6 inner larger than outer", "2001:db8:5::/64", "2001:db8:5::/48", false),
+		Entry("mixed address families", "10.0.0.0/16", "2001:db8:6::/64", false),
 	)
 })
