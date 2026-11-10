@@ -432,6 +432,10 @@ func (r *NodeReconciler) reconcileMaintenance(ctx context.Context, node *corev1.
 		}
 	}
 
+	if err := r.ensureMaintenanceCondition(ctx, node, hasApproval && maintenanceNeeded); err != nil {
+		return fmt.Errorf("unable to ensure maintenance condition on Node: %w", err)
+	}
+
 	return nil
 }
 
@@ -492,4 +496,66 @@ func (r *NodeReconciler) syncServerClaimApproval(ctx context.Context, serverClai
 	}
 
 	return nil
+}
+
+// ensureMaintenanceCondition mirrors the maintenance state onto the node status: the
+// MaintenanceInProgress condition is present exactly while an approved maintenance is still needed.
+func (r *NodeReconciler) ensureMaintenanceCondition(ctx context.Context, node *corev1.Node, maintenanceInProgress bool) error {
+	base := node.DeepCopy()
+
+	var changed bool
+	if maintenanceInProgress {
+		klog.V(2).InfoS("Node maintenance is approved and needed, setting MaintenanceInProgress condition", "node", node.Name)
+		changed = setNodeStatusCondition(&node.Status.Conditions, corev1.NodeCondition{
+			Type:    "MaintenanceInProgress",
+			Status:  corev1.ConditionTrue,
+			Reason:  "PlannedMaintenance",
+			Message: "Node is in planned maintenance mode",
+		})
+	} else {
+		klog.V(2).InfoS("Node maintenance is not in progress, removing MaintenanceInProgress condition if present", "node", node.Name)
+		changed = removeNodeStatusCondition(&node.Status.Conditions, "MaintenanceInProgress")
+	}
+
+	if !changed {
+		return nil
+	}
+	if err := r.targetClient.Status().Patch(ctx, node, client.MergeFrom(base)); err != nil {
+		return fmt.Errorf("unable to patch Node status conditions: %w", err)
+	}
+	return nil
+}
+
+// setNodeStatusCondition upserts a condition into the slice, bumping LastTransitionTime only when the status flips.
+func setNodeStatusCondition(conds *[]corev1.NodeCondition, cond corev1.NodeCondition) bool {
+	now := metav1.Now()
+	for i := range *conds {
+		if (*conds)[i].Type == cond.Type {
+			existing := &(*conds)[i]
+			if existing.Status == cond.Status && existing.Reason == cond.Reason && existing.Message == cond.Message {
+				return false
+			}
+			if existing.Status != cond.Status {
+				cond.LastTransitionTime = now
+			} else {
+				cond.LastTransitionTime = existing.LastTransitionTime
+			}
+			*existing = cond
+			return true
+		}
+	}
+	cond.LastTransitionTime = now
+	*conds = append(*conds, cond)
+	return true
+}
+
+// removeNodeStatusCondition drops the condition with the given type from the slice.
+func removeNodeStatusCondition(conds *[]corev1.NodeCondition, condType corev1.NodeConditionType) bool {
+	for i := range *conds {
+		if (*conds)[i].Type == condType {
+			*conds = append((*conds)[:i], (*conds)[i+1:]...)
+			return true
+		}
+	}
+	return false
 }

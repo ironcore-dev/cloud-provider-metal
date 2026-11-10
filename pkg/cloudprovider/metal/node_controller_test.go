@@ -5,6 +5,7 @@ package metal
 
 import (
 	"net"
+	"time"
 
 	metalv1alpha1 "github.com/ironcore-dev/metal-operator/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
@@ -568,6 +569,160 @@ var _ = Describe("NodeReconciler", func() {
 				HaveField("Labels", Not(HaveKey(metalv1alpha1.ServerMaintenanceApprovedLabelKey))),
 			))
 		})
+	})
+
+	Context("Maintenance Status Condition", func() {
+		hasMaintenanceCondition := func(n *corev1.Node) bool {
+			for _, c := range n.Status.Conditions {
+				if c.Type == "MaintenanceInProgress" && c.Status == corev1.ConditionTrue && c.Reason == "PlannedMaintenance" {
+					return true
+				}
+			}
+			return false
+		}
+
+		It("should set MaintenanceInProgress when the maintenance is approved and remove it when no longer needed", func(ctx SpecContext) {
+			By("Marking the ServerClaim maintenance-needed")
+			Eventually(Update(serverClaim, func() {
+				if serverClaim.Labels == nil {
+					serverClaim.Labels = make(map[string]string)
+				}
+				serverClaim.Labels[metalv1alpha1.ServerMaintenanceNeededLabelKey] = TrueStr
+			})).Should(Succeed())
+
+			By("Approving maintenance on the Node")
+			Eventually(Update(node, func() {
+				if node.Labels == nil {
+					node.Labels = make(map[string]string)
+				}
+				node.Labels[metalv1alpha1.ServerMaintenanceApprovedLabelKey] = TrueStr
+			})).Should(Succeed())
+
+			By("Waiting until the controller has propagated the approval to the ServerClaim")
+			Eventually(Object(serverClaim)).Should(
+				HaveField("Labels", HaveKeyWithValue(metalv1alpha1.ServerMaintenanceApprovedLabelKey, TrueStr)),
+			)
+
+			By("Nudging the Node to trigger the reconcile pass that observes the approved claim")
+			Eventually(Update(node, func() {
+				if node.Annotations == nil {
+					node.Annotations = make(map[string]string)
+				}
+				node.Annotations["maintenance-trigger"] = "true"
+			})).Should(Succeed())
+
+			By("Verifying the MaintenanceInProgress condition appears on the Node status")
+			Eventually(Object(node)).Should(WithTransform(hasMaintenanceCondition, BeTrue()))
+
+			By("Removing the maintenance-needed label from the ServerClaim")
+			Eventually(Update(serverClaim, func() {
+				delete(serverClaim.Labels, metalv1alpha1.ServerMaintenanceNeededLabelKey)
+			})).Should(Succeed())
+
+			By("Verifying the MaintenanceInProgress condition is removed from the Node status")
+			Eventually(Object(node)).Should(WithTransform(hasMaintenanceCondition, BeFalse()))
+		})
+
+		It("should not set MaintenanceInProgress without an approval even if maintenance is needed", func(ctx SpecContext) {
+			By("Marking only the ServerClaim as maintenance-needed")
+			Eventually(Update(serverClaim, func() {
+				if serverClaim.Labels == nil {
+					serverClaim.Labels = make(map[string]string)
+				}
+				serverClaim.Labels[metalv1alpha1.ServerMaintenanceNeededLabelKey] = TrueStr
+			})).Should(Succeed())
+
+			By("Verifying no condition is written to the Node status")
+			Consistently(Object(node)).Should(WithTransform(hasMaintenanceCondition, BeFalse()))
+		})
+	})
+})
+
+var _ = Describe("setNodeStatusCondition", func() {
+	maintenanceCond := func(status corev1.ConditionStatus, reason string) corev1.NodeCondition {
+		return corev1.NodeCondition{
+			Type:    "MaintenanceInProgress",
+			Status:  status,
+			Reason:  reason,
+			Message: "Node is in planned maintenance mode",
+		}
+	}
+
+	It("should append a new condition and stamp LastTransitionTime", func() {
+		conds := []corev1.NodeCondition{}
+		changed := setNodeStatusCondition(&conds, maintenanceCond(corev1.ConditionTrue, "PlannedMaintenance"))
+
+		Expect(changed).To(BeTrue())
+		Expect(conds).To(HaveLen(1))
+		Expect(conds[0].Type).To(Equal(corev1.NodeConditionType("MaintenanceInProgress")))
+		Expect(conds[0].Status).To(Equal(corev1.ConditionTrue))
+		Expect(conds[0].LastTransitionTime).NotTo(BeZero())
+	})
+
+	It("should report no change when an identical condition already exists", func() {
+		conds := []corev1.NodeCondition{}
+		Expect(setNodeStatusCondition(&conds, maintenanceCond(corev1.ConditionTrue, "PlannedMaintenance"))).To(BeTrue())
+
+		By("setting the exact same condition again")
+		Expect(setNodeStatusCondition(&conds, maintenanceCond(corev1.ConditionTrue, "PlannedMaintenance"))).To(BeFalse())
+		Expect(conds).To(HaveLen(1))
+	})
+
+	It("should preserve LastTransitionTime when only the message changes", func() {
+		conds := []corev1.NodeCondition{}
+		Expect(setNodeStatusCondition(&conds, maintenanceCond(corev1.ConditionTrue, "PlannedMaintenance"))).To(BeTrue())
+		transitionTime := conds[0].LastTransitionTime
+
+		updated := maintenanceCond(corev1.ConditionTrue, "AnotherReason")
+		Expect(setNodeStatusCondition(&conds, updated)).To(BeTrue())
+		Expect(conds[0].Reason).To(Equal("AnotherReason"))
+		Expect(conds[0].LastTransitionTime).To(Equal(transitionTime))
+	})
+
+	It("should bump LastTransitionTime when the status flips", func() {
+		conds := []corev1.NodeCondition{}
+		Expect(setNodeStatusCondition(&conds, maintenanceCond(corev1.ConditionTrue, "PlannedMaintenance"))).To(BeTrue())
+		conds[0].LastTransitionTime = metav1.NewTime(metav1.Now().Add(-time.Hour))
+
+		flipped := maintenanceCond(corev1.ConditionFalse, "PlannedMaintenance")
+		Expect(setNodeStatusCondition(&conds, flipped)).To(BeTrue())
+		Expect(conds[0].LastTransitionTime.Time).To(BeTemporally(">", metav1.Now().Add(-time.Hour)))
+	})
+
+	It("should not touch other condition types", func() {
+		conds := []corev1.NodeCondition{
+			{Type: corev1.NodeReady, Status: corev1.ConditionTrue, Reason: "KubeletReady"},
+		}
+		Expect(setNodeStatusCondition(&conds, maintenanceCond(corev1.ConditionTrue, "PlannedMaintenance"))).To(BeTrue())
+
+		Expect(conds).To(HaveLen(2))
+		Expect(conds[0].Type).To(Equal(corev1.NodeReady))
+		Expect(conds[0].Reason).To(Equal("KubeletReady"))
+	})
+})
+
+var _ = Describe("removeNodeStatusCondition", func() {
+	It("should remove an existing condition and report the change", func() {
+		conds := []corev1.NodeCondition{
+			{Type: corev1.NodeReady, Status: corev1.ConditionTrue},
+			{Type: "MaintenanceInProgress", Status: corev1.ConditionFalse},
+			{Type: corev1.NodeMemoryPressure, Status: corev1.ConditionFalse},
+		}
+
+		Expect(removeNodeStatusCondition(&conds, "MaintenanceInProgress")).To(BeTrue())
+		Expect(conds).To(HaveLen(2))
+		for _, c := range conds {
+			Expect(c.Type).NotTo(Equal(corev1.NodeConditionType("MaintenanceInProgress")))
+		}
+	})
+
+	It("should report no change when the condition is absent", func() {
+		conds := []corev1.NodeCondition{
+			{Type: corev1.NodeReady, Status: corev1.ConditionTrue},
+		}
+
+		Expect(removeNodeStatusCondition(&conds, "MaintenanceInProgress")).To(BeFalse())
+		Expect(conds).To(HaveLen(1))
 	})
 })
 
