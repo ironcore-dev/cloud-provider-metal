@@ -6,6 +6,7 @@ package metal
 import (
 	"net"
 
+	maintenancev1alpha1 "github.com/ironcore-dev/metal-maintenance-operator/api/maintenance/v1alpha1"
 	metalv1alpha1 "github.com/ironcore-dev/metal-operator/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -45,7 +46,6 @@ var _ = Describe("NodeReconciler", func() {
 			},
 			Spec: metalv1alpha1.ServerSpec{
 				SystemUUID: "12345",
-				Power:      "On",
 			},
 		}
 		Expect(k8sClient.Create(ctx, server)).To(Succeed())
@@ -181,7 +181,7 @@ var _ = Describe("NodeReconciler", func() {
 			By("Triggering reconciliation by patching the claim")
 			originalServerClaim := serverClaim.DeepCopy()
 			serverClaim.Labels = map[string]string{
-				metalv1alpha1.ServerMaintenanceNeededLabelKey: TrueStr,
+				maintenancev1alpha1.ServerMaintenanceNeededLabelKey: TrueStr,
 			}
 			Expect(k8sClient.Patch(ctx, serverClaim, client.MergeFrom(originalServerClaim))).To(Succeed())
 
@@ -203,7 +203,7 @@ var _ = Describe("NodeReconciler", func() {
 			By("Triggering reconciliation by patching the claim")
 			originalServerClaim := serverClaim.DeepCopy()
 			serverClaim.Labels = map[string]string{
-				metalv1alpha1.ServerMaintenanceNeededLabelKey: TrueStr,
+				maintenancev1alpha1.ServerMaintenanceNeededLabelKey: TrueStr,
 			}
 			Expect(k8sClient.Patch(ctx, serverClaim, client.MergeFrom(originalServerClaim))).To(Succeed())
 
@@ -252,10 +252,10 @@ var _ = Describe("NodeReconciler", func() {
 				if node.Labels == nil {
 					node.Labels = make(map[string]string)
 				}
-				node.Labels[metalv1alpha1.ServerMaintenanceRequestedLabelKey] = TrueStr
+				node.Labels[maintenancev1alpha1.ServerMaintenanceRequestedLabelKey] = TrueStr
 			})).Should(Succeed())
 
-			maintenanceCR := &metalv1alpha1.ServerMaintenance{
+			maintenanceCR := &maintenancev1alpha1.ServerMaintenance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      serverClaim.Name,
 					Namespace: serverClaim.Namespace,
@@ -264,7 +264,7 @@ var _ = Describe("NodeReconciler", func() {
 			Eventually(Get(maintenanceCR)).Should(Succeed())
 
 			By("Verifying the ServerMaintenance CR fields")
-			Expect(maintenanceCR.Spec.Policy).To(Equal(metalv1alpha1.ServerMaintenancePolicyOwnerApproval))
+			Expect(maintenanceCR.Spec.Policy).To(Equal(maintenancev1alpha1.ServerMaintenancePolicyOwnerApproval))
 			Expect(maintenanceCR.Spec.Priority).To(Equal(serverMaintenancePriority))
 			Expect(maintenanceCR.Spec.ServerRef).NotTo(BeNil())
 			Expect(maintenanceCR.Spec.ServerRef.Name).To(Equal(serverClaim.Spec.ServerRef.Name))
@@ -275,7 +275,7 @@ var _ = Describe("NodeReconciler", func() {
 		})
 
 		It("should do nothing if ServerMaintenance CR already exists (idempotency)", func(ctx SpecContext) {
-			existingCR := &metalv1alpha1.ServerMaintenance{
+			existingCR := &maintenancev1alpha1.ServerMaintenance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      serverClaim.Name,
 					Namespace: serverClaim.Namespace,
@@ -283,8 +283,8 @@ var _ = Describe("NodeReconciler", func() {
 						"test-marker": "do-not-overwrite",
 					},
 				},
-				Spec: metalv1alpha1.ServerMaintenanceSpec{
-					Policy:   metalv1alpha1.ServerMaintenancePolicyOwnerApproval,
+				Spec: maintenancev1alpha1.ServerMaintenanceSpec{
+					Policy:   maintenancev1alpha1.ServerMaintenancePolicyOwnerApproval,
 					Priority: serverMaintenancePriority,
 					ServerRef: &corev1.LocalObjectReference{
 						Name: serverClaim.Spec.ServerRef.Name,
@@ -299,7 +299,7 @@ var _ = Describe("NodeReconciler", func() {
 				if node.Labels == nil {
 					node.Labels = make(map[string]string)
 				}
-				node.Labels[metalv1alpha1.ServerMaintenanceRequestedLabelKey] = TrueStr
+				node.Labels[maintenancev1alpha1.ServerMaintenanceRequestedLabelKey] = TrueStr
 			})).Should(Succeed())
 
 			By("Ensuring the existing CR is completely untouched by the controller")
@@ -311,7 +311,7 @@ var _ = Describe("NodeReconciler", func() {
 		})
 
 		It("should NOT overwrite an existing ServerMaintenance CR if it is not managed by the controller", func(ctx SpecContext) {
-			unownedCR := &metalv1alpha1.ServerMaintenance{
+			unownedCR := &maintenancev1alpha1.ServerMaintenance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      serverClaim.Name,
 					Namespace: serverClaim.Namespace,
@@ -320,8 +320,8 @@ var _ = Describe("NodeReconciler", func() {
 						"custom-marker":   "do-not-touch",
 					},
 				},
-				Spec: metalv1alpha1.ServerMaintenanceSpec{
-					Policy:   metalv1alpha1.ServerMaintenancePolicyOwnerApproval,
+				Spec: maintenancev1alpha1.ServerMaintenanceSpec{
+					Policy:   maintenancev1alpha1.ServerMaintenancePolicyOwnerApproval,
 					Priority: 999,
 					ServerRef: &corev1.LocalObjectReference{
 						Name: serverClaim.Spec.ServerRef.Name,
@@ -336,7 +336,7 @@ var _ = Describe("NodeReconciler", func() {
 				if node.Labels == nil {
 					node.Labels = make(map[string]string)
 				}
-				node.Labels[metalv1alpha1.ServerMaintenanceRequestedLabelKey] = TrueStr
+				node.Labels[maintenancev1alpha1.ServerMaintenanceRequestedLabelKey] = TrueStr
 			})).Should(Succeed())
 
 			By("Ensuring the unowned CR fields are NOT overwritten")
@@ -355,10 +355,10 @@ var _ = Describe("NodeReconciler", func() {
 				if node.Labels == nil {
 					node.Labels = make(map[string]string)
 				}
-				node.Labels[metalv1alpha1.ServerMaintenanceRequestedLabelKey] = TrueStr
+				node.Labels[maintenancev1alpha1.ServerMaintenanceRequestedLabelKey] = TrueStr
 			})).Should(Succeed())
 
-			maintenanceCR := &metalv1alpha1.ServerMaintenance{
+			maintenanceCR := &maintenancev1alpha1.ServerMaintenance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      serverClaim.Name,
 					Namespace: serverClaim.Namespace,
@@ -368,7 +368,7 @@ var _ = Describe("NodeReconciler", func() {
 
 			By("Removing the maintenance-requested label from the Node")
 			Eventually(Update(node, func() {
-				delete(node.Labels, metalv1alpha1.ServerMaintenanceRequestedLabelKey)
+				delete(node.Labels, maintenancev1alpha1.ServerMaintenanceRequestedLabelKey)
 			})).Should(Succeed())
 
 			By("Verifying the ServerMaintenance CR is deleted")
@@ -387,7 +387,7 @@ var _ = Describe("NodeReconciler", func() {
 				node.Annotations["dummy-trigger"] = "true"
 			})).Should(Succeed())
 
-			maintenanceCR := &metalv1alpha1.ServerMaintenance{
+			maintenanceCR := &maintenancev1alpha1.ServerMaintenance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      serverClaim.Name,
 					Namespace: serverClaim.Namespace,
@@ -407,10 +407,10 @@ var _ = Describe("NodeReconciler", func() {
 				if node.Labels == nil {
 					node.Labels = make(map[string]string)
 				}
-				node.Labels[metalv1alpha1.ServerMaintenanceRequestedLabelKey] = TrueStr
+				node.Labels[maintenancev1alpha1.ServerMaintenanceRequestedLabelKey] = TrueStr
 			})).Should(Succeed())
 
-			maintenanceCR := &metalv1alpha1.ServerMaintenance{
+			maintenanceCR := &maintenancev1alpha1.ServerMaintenance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      serverClaim.Name,
 					Namespace: serverClaim.Namespace,
@@ -432,7 +432,7 @@ var _ = Describe("NodeReconciler", func() {
 
 		It("should NOT delete the ServerMaintenance CR if it is not managed by the controller", func(ctx SpecContext) {
 			const managedBy = "some-other-controller-or-admin"
-			unownedCR := &metalv1alpha1.ServerMaintenance{
+			unownedCR := &maintenancev1alpha1.ServerMaintenance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      serverClaim.Name,
 					Namespace: serverClaim.Namespace,
@@ -440,8 +440,8 @@ var _ = Describe("NodeReconciler", func() {
 						labelKeyManagedBy: managedBy,
 					},
 				},
-				Spec: metalv1alpha1.ServerMaintenanceSpec{
-					Policy:   metalv1alpha1.ServerMaintenancePolicyOwnerApproval,
+				Spec: maintenancev1alpha1.ServerMaintenanceSpec{
+					Policy:   maintenancev1alpha1.ServerMaintenancePolicyOwnerApproval,
 					Priority: serverMaintenancePriority,
 					ServerRef: &corev1.LocalObjectReference{
 						Name: serverClaim.Spec.ServerRef.Name,
@@ -469,10 +469,10 @@ var _ = Describe("NodeReconciler", func() {
 				if node.Labels == nil {
 					node.Labels = make(map[string]string)
 				}
-				node.Labels[metalv1alpha1.ServerMaintenanceRequestedLabelKey] = TrueStr
+				node.Labels[maintenancev1alpha1.ServerMaintenanceRequestedLabelKey] = TrueStr
 			})).Should(Succeed())
 
-			maintenanceCR := &metalv1alpha1.ServerMaintenance{
+			maintenanceCR := &maintenancev1alpha1.ServerMaintenance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      serverClaim.Name,
 					Namespace: serverClaim.Namespace,
@@ -488,7 +488,7 @@ var _ = Describe("NodeReconciler", func() {
 
 			By("3. Removing the maintenance-requested label from the Node")
 			Eventually(Update(node, func() {
-				delete(node.Labels, metalv1alpha1.ServerMaintenanceRequestedLabelKey)
+				delete(node.Labels, maintenancev1alpha1.ServerMaintenanceRequestedLabelKey)
 			})).Should(Succeed())
 
 			By("4. Verifying the ServerMaintenance CR is deleted despite missing ServerClaim")
@@ -506,7 +506,7 @@ var _ = Describe("NodeReconciler", func() {
 				if serverClaim.Labels == nil {
 					serverClaim.Labels = make(map[string]string)
 				}
-				serverClaim.Labels[metalv1alpha1.ServerMaintenanceNeededLabelKey] = TrueStr
+				serverClaim.Labels[maintenancev1alpha1.ServerMaintenanceNeededLabelKey] = TrueStr
 			})).Should(Succeed())
 
 			By("Adding maintenance-approved label to the Node")
@@ -514,12 +514,12 @@ var _ = Describe("NodeReconciler", func() {
 				if node.Labels == nil {
 					node.Labels = make(map[string]string)
 				}
-				node.Labels[metalv1alpha1.ServerMaintenanceApprovedLabelKey] = TrueStr
+				node.Labels[maintenancev1alpha1.ServerMaintenanceApprovedLabelKey] = TrueStr
 			})).Should(Succeed())
 
 			By("Verifying the ServerClaim receives approved label")
 			Eventually(Object(serverClaim)).Should(SatisfyAll(
-				HaveField("Labels", HaveKeyWithValue(metalv1alpha1.ServerMaintenanceApprovedLabelKey, TrueStr)),
+				HaveField("Labels", HaveKeyWithValue(maintenancev1alpha1.ServerMaintenanceApprovedLabelKey, TrueStr)),
 			))
 		})
 
@@ -529,28 +529,28 @@ var _ = Describe("NodeReconciler", func() {
 				if serverClaim.Labels == nil {
 					serverClaim.Labels = make(map[string]string)
 				}
-				serverClaim.Labels[metalv1alpha1.ServerMaintenanceNeededLabelKey] = TrueStr
+				serverClaim.Labels[maintenancev1alpha1.ServerMaintenanceNeededLabelKey] = TrueStr
 			})).Should(Succeed())
 
 			Eventually(Update(node, func() {
 				if node.Labels == nil {
 					node.Labels = make(map[string]string)
 				}
-				node.Labels[metalv1alpha1.ServerMaintenanceApprovedLabelKey] = TrueStr
+				node.Labels[maintenancev1alpha1.ServerMaintenanceApprovedLabelKey] = TrueStr
 			})).Should(Succeed())
 
 			Eventually(Object(serverClaim)).Should(SatisfyAll(
-				HaveField("Labels", HaveKeyWithValue(metalv1alpha1.ServerMaintenanceApprovedLabelKey, TrueStr)),
+				HaveField("Labels", HaveKeyWithValue(maintenancev1alpha1.ServerMaintenanceApprovedLabelKey, TrueStr)),
 			))
 
 			By("Removing the approved label from the Node")
 			Eventually(Update(node, func() {
-				delete(node.Labels, metalv1alpha1.ServerMaintenanceApprovedLabelKey)
+				delete(node.Labels, maintenancev1alpha1.ServerMaintenanceApprovedLabelKey)
 			})).Should(Succeed())
 
 			By("Verifying approved label is removed from the ServerClaim")
 			Eventually(Object(serverClaim)).Should(SatisfyAll(
-				HaveField("Labels", Not(HaveKey(metalv1alpha1.ServerMaintenanceApprovedLabelKey))),
+				HaveField("Labels", Not(HaveKey(maintenancev1alpha1.ServerMaintenanceApprovedLabelKey))),
 			))
 		})
 
@@ -560,12 +560,12 @@ var _ = Describe("NodeReconciler", func() {
 				if node.Labels == nil {
 					node.Labels = make(map[string]string)
 				}
-				node.Labels[metalv1alpha1.ServerMaintenanceApprovedLabelKey] = TrueStr
+				node.Labels[maintenancev1alpha1.ServerMaintenanceApprovedLabelKey] = TrueStr
 			})).Should(Succeed())
 
 			By("Ensuring the ServerClaim does not get approved label")
 			Consistently(Object(serverClaim)).Should(SatisfyAll(
-				HaveField("Labels", Not(HaveKey(metalv1alpha1.ServerMaintenanceApprovedLabelKey))),
+				HaveField("Labels", Not(HaveKey(maintenancev1alpha1.ServerMaintenanceApprovedLabelKey))),
 			))
 		})
 	})

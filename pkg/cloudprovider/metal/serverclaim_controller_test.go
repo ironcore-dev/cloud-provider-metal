@@ -9,6 +9,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	. "sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 
+	maintenancev1alpha1 "github.com/ironcore-dev/metal-maintenance-operator/api/maintenance/v1alpha1"
 	metalv1alpha1 "github.com/ironcore-dev/metal-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -42,7 +43,6 @@ var _ = Describe("ServerClaimReconciler", func() {
 			},
 			Spec: metalv1alpha1.ServerSpec{
 				SystemUUID: "12345",
-				Power:      "On",
 			},
 		}
 		Expect(k8sClient.Create(ctx, server)).To(Succeed())
@@ -113,21 +113,21 @@ var _ = Describe("ServerClaimReconciler", func() {
 	It("should copy over the maintenance needed label", func(ctx SpecContext) {
 		originalServerClaim := serverClaim.DeepCopy()
 		serverClaim.Labels = map[string]string{
-			metalv1alpha1.ServerMaintenanceNeededLabelKey: TrueStr,
+			maintenancev1alpha1.ServerMaintenanceNeededLabelKey: TrueStr,
 		}
 		Expect(k8sClient.Patch(ctx, serverClaim, client.MergeFrom(originalServerClaim))).To(Succeed())
 
-		Eventually(Object(node)).Should(HaveField("Labels", HaveKeyWithValue(metalv1alpha1.ServerMaintenanceNeededLabelKey, TrueStr)))
-		Consistently(Object(node)).Should(HaveField("Labels", HaveKeyWithValue(metalv1alpha1.ServerMaintenanceNeededLabelKey, TrueStr)))
+		Eventually(Object(node)).Should(HaveField("Labels", HaveKeyWithValue(maintenancev1alpha1.ServerMaintenanceNeededLabelKey, TrueStr)))
+		Consistently(Object(node)).Should(HaveField("Labels", HaveKeyWithValue(maintenancev1alpha1.ServerMaintenanceNeededLabelKey, TrueStr)))
 	})
 
 	It("should remove the maintenance needed label when not needed", func(ctx SpecContext) {
 		originalNode := node.DeepCopy()
 		node.Labels = map[string]string{
-			metalv1alpha1.ServerMaintenanceNeededLabelKey: TrueStr,
+			maintenancev1alpha1.ServerMaintenanceNeededLabelKey: TrueStr,
 		}
 		Expect(k8sClient.Patch(ctx, node, client.MergeFrom(originalNode))).To(Succeed())
-		Eventually(Object(node)).Should(HaveField("Labels", HaveKeyWithValue(metalv1alpha1.ServerMaintenanceNeededLabelKey, TrueStr)))
+		Eventually(Object(node)).Should(HaveField("Labels", HaveKeyWithValue(maintenancev1alpha1.ServerMaintenanceNeededLabelKey, TrueStr)))
 
 		// Trigger the reconciler to remove the label
 		originalServerClaim := serverClaim.DeepCopy()

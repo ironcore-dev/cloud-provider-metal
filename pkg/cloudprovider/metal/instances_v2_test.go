@@ -43,7 +43,6 @@ var _ = Describe("InstancesV2", func() {
 				},
 				Spec: metalv1alpha1.ServerSpec{
 					SystemUUID: "12345",
-					Power:      "On",
 				},
 			}
 			Expect(k8sClient.Create(ctx, server)).To(Succeed())
@@ -112,7 +111,6 @@ var _ = Describe("InstancesV2", func() {
 			},
 			Spec: metalv1alpha1.ServerSpec{
 				SystemUUID: "12345",
-				Power:      "On",
 			},
 		}
 		Expect(k8sClient.Create(ctx, server)).To(Succeed())
@@ -198,7 +196,6 @@ var _ = Describe("InstancesV2", func() {
 			},
 			Spec: metalv1alpha1.ServerSpec{
 				SystemUUID: "9876",
-				Power:      "On",
 			},
 		}
 		Expect(k8sClient.Create(ctx, server)).To(Succeed())
@@ -293,7 +290,6 @@ var _ = Describe("InstancesV2", func() {
 			},
 			Spec: metalv1alpha1.ServerSpec{
 				SystemUUID: "12345",
-				Power:      "On",
 			},
 		}
 		Expect(k8sClient.Create(ctx, server)).To(Succeed())
@@ -446,7 +442,6 @@ var _ = Describe("InstancesV2 with configure node addresses false", func() {
 			},
 			Spec: metalv1alpha1.ServerSpec{
 				SystemUUID: "12345",
-				Power:      "On",
 			},
 		}
 		Expect(k8sClient.Create(ctx, server)).To(Succeed())
