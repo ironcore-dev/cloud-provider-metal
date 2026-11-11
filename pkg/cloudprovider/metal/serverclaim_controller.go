@@ -15,6 +15,7 @@ import (
 	ctrlcache "sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	maintenancev1alpha1 "github.com/ironcore-dev/metal-maintenance-operator/api/maintenance/v1alpha1"
 	metalv1alpha1 "github.com/ironcore-dev/metal-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -121,11 +122,11 @@ func (r *ServerClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		node.Labels = make(map[string]string)
 	}
 	originalNode := node.DeepCopy()
-	maintenanceVal := serverClaim.Labels[metalv1alpha1.ServerMaintenanceNeededLabelKey]
+	maintenanceVal := serverClaim.Labels[maintenancev1alpha1.ServerMaintenanceNeededLabelKey]
 	if maintenanceVal == TrueStr {
-		node.Labels[metalv1alpha1.ServerMaintenanceNeededLabelKey] = TrueStr
+		node.Labels[maintenancev1alpha1.ServerMaintenanceNeededLabelKey] = TrueStr
 	} else {
-		delete(node.Labels, metalv1alpha1.ServerMaintenanceNeededLabelKey)
+		delete(node.Labels, maintenancev1alpha1.ServerMaintenanceNeededLabelKey)
 	}
 	return r.targetClient.Patch(ctx, &node, client.MergeFrom(originalNode))
 }
