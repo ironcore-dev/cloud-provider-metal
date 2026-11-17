@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"net"
 
+	maintenancev1alpha1 "github.com/ironcore-dev/metal-maintenance-operator/api/maintenance/v1alpha1"
 	metalv1alpha1 "github.com/ironcore-dev/metal-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -204,7 +205,7 @@ func (r *NodeReconciler) reconcileDelete(ctx context.Context, node *corev1.Node)
 }
 
 func (r *NodeReconciler) ensureServerMaintenanceNotExists(ctx context.Context, key types.NamespacedName) error {
-	maintenance := &metalv1alpha1.ServerMaintenance{}
+	maintenance := &maintenancev1alpha1.ServerMaintenance{}
 	if err := r.metalClient.Get(ctx, key, maintenance); err != nil {
 		return client.IgnoreNotFound(err)
 	}
@@ -380,7 +381,7 @@ func (r *NodeReconciler) reconcileMaintenance(ctx context.Context, node *corev1.
 		return nil
 	}
 
-	maintenanceRequested := node.Labels[metalv1alpha1.ServerMaintenanceRequestedLabelKey] == TrueStr
+	maintenanceRequested := node.Labels[maintenancev1alpha1.ServerMaintenanceRequestedLabelKey] == TrueStr
 
 	if !maintenanceRequested {
 		if err := r.ensureServerMaintenanceNotExists(ctx, maintenanceKey); err != nil {
@@ -420,11 +421,11 @@ func (r *NodeReconciler) reconcileMaintenance(ctx context.Context, node *corev1.
 		}
 	}
 
-	maintenanceNeeded := serverClaim.Labels[metalv1alpha1.ServerMaintenanceNeededLabelKey] == TrueStr
-	maintenanceApproved := node.Labels[metalv1alpha1.ServerMaintenanceApprovedLabelKey] == TrueStr
+	maintenanceNeeded := serverClaim.Labels[maintenancev1alpha1.ServerMaintenanceNeededLabelKey] == TrueStr
+	maintenanceApproved := node.Labels[maintenancev1alpha1.ServerMaintenanceApprovedLabelKey] == TrueStr
 
 	shouldHaveApproval := maintenanceNeeded && maintenanceApproved
-	hasApproval := serverClaim.Labels[metalv1alpha1.ServerMaintenanceApprovedLabelKey] == TrueStr
+	hasApproval := serverClaim.Labels[maintenancev1alpha1.ServerMaintenanceApprovedLabelKey] == TrueStr
 
 	if shouldHaveApproval != hasApproval {
 		if err = r.syncServerClaimApproval(ctx, serverClaim, shouldHaveApproval); err != nil {
@@ -436,7 +437,7 @@ func (r *NodeReconciler) reconcileMaintenance(ctx context.Context, node *corev1.
 }
 
 func (r *NodeReconciler) ensureServerMaintenanceExists(ctx context.Context, key types.NamespacedName, serverName string) error {
-	maintenance := &metalv1alpha1.ServerMaintenance{
+	maintenance := &maintenancev1alpha1.ServerMaintenance{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      key.Name,
 			Namespace: key.Namespace,
@@ -451,7 +452,7 @@ func (r *NodeReconciler) ensureServerMaintenanceExists(ctx context.Context, key 
 			}
 		}
 
-		maintenance.Spec.Policy = metalv1alpha1.ServerMaintenancePolicyOwnerApproval
+		maintenance.Spec.Policy = maintenancev1alpha1.ServerMaintenancePolicyOwnerApproval
 		maintenance.Spec.Priority = serverMaintenancePriority
 		maintenance.Spec.ServerRef = &corev1.LocalObjectReference{
 			Name: serverName,
@@ -481,10 +482,10 @@ func (r *NodeReconciler) syncServerClaimApproval(ctx context.Context, serverClai
 		if serverClaim.Labels == nil {
 			serverClaim.Labels = make(map[string]string)
 		}
-		serverClaim.Labels[metalv1alpha1.ServerMaintenanceApprovedLabelKey] = TrueStr
+		serverClaim.Labels[maintenancev1alpha1.ServerMaintenanceApprovedLabelKey] = TrueStr
 
 	} else {
-		delete(serverClaim.Labels, metalv1alpha1.ServerMaintenanceApprovedLabelKey)
+		delete(serverClaim.Labels, maintenancev1alpha1.ServerMaintenanceApprovedLabelKey)
 	}
 
 	if err := r.metalClient.Patch(ctx, serverClaim, client.MergeFrom(base)); err != nil {
